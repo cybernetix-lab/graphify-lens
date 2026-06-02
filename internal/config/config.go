@@ -60,29 +60,14 @@ func Load(path string) (*Config, error) {
 		if _, err := os.Stat(canonical); err == nil {
 			return loadFile(canonical)
 		}
-		return DefaultConfig(), nil
-	}
-
-	if path != canonical {
-		if err := copyConfig(path, canonical); err != nil {
+		cfg := DefaultConfig()
+		if err := cfg.Save(canonical); err != nil {
 			return nil, err
 		}
+		return cfg, nil
 	}
 
-	return loadFile(canonical)
-}
-
-func copyConfig(src, dst string) error {
-	data, err := os.ReadFile(src)
-	if err != nil {
-		return err
-	}
-
-	dir := filepath.Dir(dst)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return err
-	}
-	return os.WriteFile(dst, data, 0644)
+	return loadFile(path)
 }
 
 func loadFile(path string) (*Config, error) {

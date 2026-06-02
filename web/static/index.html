@@ -60,7 +60,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .chart-container { width: 100%; height: 300px; position: relative; }
 .chart-container.large { height: 400px; }
 
-.settings { max-width: 700px; }
+.settings { display: flex; gap: 0; min-height: 400px; }
+.settings-sidebar { width: 180px; flex-shrink: 0; border-right: 1px solid #30363d; padding-top: 8px; }
+.settings-body { flex: 1; padding: 0 0 0 24px; min-width: 0; }
 .form-group { margin-bottom: 16px; }
 .form-group label { display: block; font-size: 13px; color: #8b949e; margin-bottom: 6px; }
 .form-group input, .form-group select { width: 100%; padding: 8px 12px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #e1e4e8; font-size: 14px; }
@@ -106,6 +108,13 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .dir-status-item .ds-time { color: #8b949e; font-size: 12px; }
 
 .msg { font-size: 13px; margin-top: 8px; display: none; }
+
+.sub-tabs { display: flex; flex-direction: column; gap: 2px; }
+.sub-tab { padding: 10px 14px; cursor: pointer; font-size: 13px; color: #8b949e; border-left: 2px solid transparent; border-radius: 0 6px 6px 0; transition: all 0.2s; }
+.sub-tab:hover { color: #e1e4e8; background: #21262d; }
+.sub-tab.active { color: #58a6ff; border-left-color: #58a6ff; background: #1c2533; }
+.sub-panel { display: none; }
+.sub-panel.active { display: block; }
 </style>
 </head>
 <body>
@@ -172,60 +181,72 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
   </div>
   <div id="panel-settings" class="panel">
     <div class="settings">
-      <div class="card">
-        <h3>📂 工作目录管理（所有目录均独立执行定时任务）</h3>
-        <div class="wd-add">
-          <input type="text" id="wd-new-path" placeholder="输入工作目录路径，如 ~/Projects/monorepo" onkeydown="if(event.key==='Enter')addWorkDir()">
-          <button class="btn btn-primary" onclick="addWorkDir()">添加</button>
+      <div class="settings-sidebar">
+        <div class="sub-tabs">
+          <div class="sub-tab active" data-sub="workdirs">📂 工作目录管理</div>
+          <div class="sub-tab" data-sub="global">⚙️ 全局配置</div>
         </div>
-        <div class="wd-list" id="wd-list">
-          <div class="loading"><div class="spinner"></div></div>
-        </div>
-        <div class="dir-status" id="dir-status"></div>
-        <div id="wd-msg" class="msg"></div>
       </div>
-      <div class="card" style="margin-top:16px">
-        <h3>⚙️ 全局配置</h3>
-        <div class="form-group">
-          <label>端口（需重启生效）</label>
-          <input type="number" id="cfg-port" value="8080">
+      <div class="settings-body">
+        <div class="sub-panel active" id="sub-panel-workdirs">
+          <div class="card">
+            <h3>工作目录（所有目录均独立执行定时任务）</h3>
+            <div class="wd-add">
+              <input type="text" id="wd-new-path" placeholder="输入工作目录路径，如 ~/Projects/monorepo" onkeydown="if(event.key==='Enter')addWorkDir()">
+              <button class="btn btn-primary" onclick="addWorkDir()">添加</button>
+            </div>
+            <div class="wd-list" id="wd-list">
+              <div class="loading"><div class="spinner"></div></div>
+            </div>
+            <div class="dir-status" id="dir-status"></div>
+            <div id="wd-msg" class="msg"></div>
+          </div>
         </div>
-        <div class="form-group">
-          <label>自动提交间隔（如 30m, 1h）</label>
-          <input type="text" id="cfg-interval" value="30m">
-        </div>
-        <div class="form-group">
-          <label>提交信息模板</label>
-          <input type="text" id="cfg-message" value="auto: graphify-lens knowledge base snapshot">
-        </div>
-        <div class="form-group">
-          <label>质量历史目录</label>
-          <input type="text" id="cfg-quality-history" placeholder="~/.graphify-lens/quality_history">
-        </div>
-        <div class="form-group">
-          <label>数据目录</label>
-          <input type="text" id="cfg-data-dir" placeholder="~/.graphify-lens">
-        </div>
-        <div class="form-group">
-          <label>Author 名称</label>
-          <input type="text" id="cfg-author-name" placeholder="Graphify Lens Bot">
-        </div>
-        <div class="form-group">
-          <label>Author 邮箱</label>
-          <input type="text" id="cfg-author-email" placeholder="graphify-lens-bot@teambuddy.local">
-        </div>
-        <div class="form-group">
-          <label>
-            <input type="checkbox" id="cfg-auto-commit" checked>
-            启用自动提交
-          </label>
-        </div>
-        <div id="cfg-save-msg" class="msg"></div>
-        <div class="btn-group">
-          <button class="btn btn-primary" onclick="saveConfig()">保存配置</button>
-          <button class="btn btn-secondary" onclick="loadConfig()">重新加载</button>
-          <button class="btn btn-secondary" onclick="runCycle()">立即执行所有周期</button>
-          <button class="btn btn-secondary" onclick="refreshAll()">刷新状态</button>
+        <div class="sub-panel" id="sub-panel-global">
+          <div class="card">
+            <h3>全局配置</h3>
+            <div class="form-group">
+              <label>端口（需重启生效）</label>
+              <input type="number" id="cfg-port" value="8080">
+            </div>
+            <div class="form-group">
+              <label>自动提交间隔（如 30m, 1h）</label>
+              <input type="text" id="cfg-interval" value="30m">
+            </div>
+            <div class="form-group">
+              <label>提交信息模板</label>
+              <input type="text" id="cfg-message" value="auto: graphify-lens knowledge base snapshot">
+            </div>
+            <div class="form-group">
+              <label>质量历史目录</label>
+              <input type="text" id="cfg-quality-history" placeholder="~/.graphify-lens/quality_history">
+            </div>
+            <div class="form-group">
+              <label>数据目录</label>
+              <input type="text" id="cfg-data-dir" placeholder="~/.graphify-lens">
+            </div>
+            <div class="form-group">
+              <label>Author 名称</label>
+              <input type="text" id="cfg-author-name" placeholder="Graphify Lens Bot">
+            </div>
+            <div class="form-group">
+              <label>Author 邮箱</label>
+              <input type="text" id="cfg-author-email" placeholder="graphify-lens-bot@teambuddy.local">
+            </div>
+            <div class="form-group">
+              <label>
+                <input type="checkbox" id="cfg-auto-commit" checked>
+                启用自动提交
+              </label>
+            </div>
+            <div id="cfg-save-msg" class="msg"></div>
+            <div class="btn-group">
+              <button class="btn btn-primary" onclick="saveConfig()">保存配置</button>
+              <button class="btn btn-secondary" onclick="loadConfig()">重新加载</button>
+              <button class="btn btn-secondary" onclick="runCycle()">立即执行所有周期</button>
+              <button class="btn btn-secondary" onclick="refreshAll()">刷新状态</button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -267,6 +288,15 @@ document.querySelectorAll('.tab').forEach(tab => {
     if (tab.dataset.tab === 'dashboard') renderDashboard();
     if (tab.dataset.tab === 'history') renderHistory();
     if (tab.dataset.tab === 'settings') loadConfig();
+  });
+});
+
+document.querySelectorAll('.sub-tab').forEach(st => {
+  st.addEventListener('click', () => {
+    document.querySelectorAll('.sub-tab').forEach(s => s.classList.remove('active'));
+    document.querySelectorAll('.sub-panel').forEach(p => p.classList.remove('active'));
+    st.classList.add('active');
+    document.getElementById('sub-panel-' + st.dataset.sub).classList.add('active');
   });
 });
 

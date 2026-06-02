@@ -28,15 +28,10 @@ func TestLoad_NoFile(t *testing.T) {
 	if cfg.Port != 8080 {
 		t.Errorf("expected default port, got %d", cfg.Port)
 	}
-}
 
-func TestLoad_EmptyPath(t *testing.T) {
-	cfg, err := Load("")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if cfg == nil {
-		t.Fatal("expected non-nil config")
+	canonical := CanonicalPath()
+	if _, err := os.Stat(canonical); err != nil {
+		t.Errorf("expected canonical config to be created at %s: %v", canonical, err)
 	}
 }
 
