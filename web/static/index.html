@@ -7,12 +7,17 @@
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f1117; color: #e1e4e8; }
-.header { background: #161b22; border-bottom: 1px solid #30363d; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; }
-.header h1 { font-size: 18px; font-weight: 600; color: #58a6ff; }
+.header { background: #161b22; border-bottom: 1px solid #30363d; padding: 10px 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+.header h1 { font-size: 18px; font-weight: 600; color: #58a6ff; white-space: nowrap; }
 .header .status { display: flex; gap: 16px; align-items: center; font-size: 13px; }
 .header .status .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
 .header .status .dot.green { background: #3fb950; }
 .header .status .dot.red { background: #f85149; }
+.header .status .dot.yellow { background: #d29922; }
+.header .wd-selector { display: flex; align-items: center; gap: 8px; }
+.header .wd-selector label { font-size: 12px; color: #8b949e; white-space: nowrap; }
+.header .wd-selector select { padding: 4px 8px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #e1e4e8; font-size: 13px; min-width: 200px; }
+.header .wd-selector select:focus { outline: none; border-color: #58a6ff; }
 .tabs { display: flex; gap: 0; background: #161b22; border-bottom: 1px solid #30363d; padding: 0 24px; }
 .tab { padding: 10px 20px; cursor: pointer; font-size: 14px; color: #8b949e; border-bottom: 2px solid transparent; transition: all 0.2s; }
 .tab:hover { color: #e1e4e8; }
@@ -56,7 +61,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .chart-container { width: 100%; height: 300px; position: relative; }
 .chart-container.large { height: 400px; }
 
-.settings { max-width: 600px; }
+.settings { max-width: 700px; }
 .form-group { margin-bottom: 16px; }
 .form-group label { display: block; font-size: 13px; color: #8b949e; margin-bottom: 6px; }
 .form-group input, .form-group select { width: 100%; padding: 8px 12px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #e1e4e8; font-size: 14px; }
@@ -66,6 +71,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .btn-primary:hover { background: #2ea043; }
 .btn-secondary { background: #21262d; color: #e1e4e8; }
 .btn-secondary:hover { background: #30363d; }
+.btn-danger { background: #da3633; color: #fff; border-color: #da3633; }
+.btn-danger:hover { background: #f85149; }
+.btn-sm { padding: 4px 10px; font-size: 12px; }
 .btn-group { display: flex; gap: 8px; margin-top: 16px; }
 
 .legend { display: flex; gap: 16px; padding: 8px 0; flex-wrap: wrap; }
@@ -83,11 +91,29 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .pagination { display: flex; gap: 4px; align-items: center; margin-top: 8px; }
 .pagination .btn { font-size: 12px; padding: 4px 10px; }
 .pagination .page-info { font-size: 12px; color: #8b949e; margin: 0 8px; }
+
+.wd-list { margin-bottom: 20px; }
+.wd-item { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; margin-bottom: 8px; }
+.wd-item.current { border-color: #58a6ff; background: #0d1a2d; }
+.wd-item .wd-path { font-size: 14px; color: #e1e4e8; font-family: monospace; }
+.wd-item .wd-badge { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: #1f6feb; color: #fff; margin-left: 8px; }
+.wd-item .wd-actions { display: flex; gap: 6px; }
+.wd-add { display: flex; gap: 8px; margin-bottom: 16px; }
+.wd-add input { flex: 1; padding: 8px 12px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #e1e4e8; font-size: 14px; }
+.wd-add input:focus { outline: none; border-color: #58a6ff; }
+
+.msg { font-size: 13px; margin-top: 8px; display: none; }
 </style>
 </head>
 <body>
 <div class="header">
   <h1>🧠 Graphify Lens - 知识库管理</h1>
+  <div class="wd-selector">
+    <label>📂 工作目录：</label>
+    <select id="wd-select" onchange="switchWorkDir()">
+      <option value="">-- 未选择 --</option>
+    </select>
+  </div>
   <div class="status">
     <span id="status-dot"><span class="dot green"></span> 运行中</span>
     <span id="status-score">质量分: --</span>
@@ -144,11 +170,18 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
   <div id="panel-settings" class="panel">
     <div class="settings">
       <div class="card">
-        <h3>配置</h3>
-        <div class="form-group">
-          <label>工作目录</label>
-          <input type="text" id="cfg-workdir" placeholder="./data/sample">
+        <h3>📂 工作目录管理</h3>
+        <div class="wd-add">
+          <input type="text" id="wd-new-path" placeholder="输入工作目录路径，如 ./data/project-a" onkeydown="if(event.key==='Enter')addWorkDir()">
+          <button class="btn btn-primary" onclick="addWorkDir()">添加</button>
         </div>
+        <div class="wd-list" id="wd-list">
+          <div class="loading"><div class="spinner"></div></div>
+        </div>
+        <div id="wd-msg" class="msg"></div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <h3>⚙️ 全局配置</h3>
         <div class="form-group">
           <label>端口（需重启生效）</label>
           <input type="number" id="cfg-port" value="8080">
@@ -183,7 +216,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
             启用自动提交
           </label>
         </div>
-        <div id="cfg-save-msg" style="font-size:13px;margin-top:8px;display:none"></div>
+        <div id="cfg-save-msg" class="msg"></div>
         <div class="btn-group">
           <button class="btn btn-primary" onclick="saveConfig()">保存配置</button>
           <button class="btn btn-secondary" onclick="loadConfig()">重新加载</button>
@@ -223,8 +256,8 @@ document.querySelectorAll('.tab').forEach(tab => {
   });
 });
 
-async function fetchJSON(url) {
-  const res = await fetch(url);
+async function fetchJSON(url, opts) {
+  const res = await fetch(url, opts);
   if (!res.ok) throw new Error(res.statusText);
   return res.json();
 }
@@ -234,7 +267,50 @@ async function refreshAll() {
     const status = await fetchJSON(API + '/status');
     document.getElementById('status-score').textContent = '质量分: ' + (status.last_score != null ? status.last_score.toFixed(1) : '--');
     document.getElementById('status-commit').textContent = '自动提交: ' + (status.auto_commit_enabled ? '开启' : '关闭');
+    updateWdSelector(status.work_dirs || [], status.current_work_dir || '');
   } catch(e) { console.error(e); }
+}
+
+function updateWdSelector(workDirs, currentWorkDir) {
+  const sel = document.getElementById('wd-select');
+  const oldVal = sel.value;
+  sel.innerHTML = '<option value="">-- 未选择 --</option>';
+  workDirs.forEach(d => {
+    const opt = document.createElement('option');
+    opt.value = d;
+    opt.textContent = d;
+    if (d === currentWorkDir) opt.selected = true;
+    sel.appendChild(opt);
+  });
+  if (sel.value !== oldVal && currentWorkDir) {
+    refreshPanels();
+  }
+}
+
+function refreshPanels() {
+  const activeTab = document.querySelector('.tab.active');
+  if (activeTab) {
+    const t = activeTab.dataset.tab;
+    if (t === 'graph') renderGraph();
+    if (t === 'dashboard') renderDashboard();
+    if (t === 'history') renderHistory();
+  }
+}
+
+async function switchWorkDir() {
+  const path = document.getElementById('wd-select').value;
+  if (!path) return;
+  try {
+    await fetchJSON(API + '/config/switch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path })
+    });
+    refreshAll();
+  } catch(e) {
+    alert('切换失败: ' + e.message);
+    refreshAll();
+  }
 }
 
 async function runCycle() {
@@ -280,7 +356,7 @@ async function renderGraph() {
     const data = await fetchJSON(url);
 
     if (!data.nodes || data.nodes.length === 0) {
-      container.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>未找到匹配的节点</p><p style="font-size:12px;margin-top:8px">尝试其他搜索关键词</p></div>';
+      container.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>未找到匹配的节点</p><p style="font-size:12px;margin-top:8px">尝试其他搜索关键词或确认工作目录中有 graphify-out 数据</p></div>';
       info.innerHTML = '';
       pagination.innerHTML = '';
       return;
@@ -613,7 +689,6 @@ async function renderHistory() {
 async function loadConfig() {
   try {
     const cfg = await fetchJSON(API + '/config');
-    document.getElementById('cfg-workdir').value = cfg.work_dir || '';
     document.getElementById('cfg-port').value = cfg.port || 8080;
     document.getElementById('cfg-interval').value = cfg.commit_interval || '30m';
     document.getElementById('cfg-message').value = cfg.commit_message || '';
@@ -622,15 +697,89 @@ async function loadConfig() {
     document.getElementById('cfg-author-name').value = cfg.author_name || '';
     document.getElementById('cfg-author-email').value = cfg.author_email || '';
     document.getElementById('cfg-auto-commit').checked = cfg.git_auto_commit !== false;
-    showCfgMsg('配置已加载', '#3fb950');
+    renderWdList(cfg.work_dirs || [], cfg.current_work_dir || '');
   } catch(e) {
-    showCfgMsg('加载失败: ' + e.message, '#f85149');
+    showMsg('cfg-save-msg', '加载失败: ' + e.message, '#f85149');
+  }
+}
+
+function renderWdList(workDirs, currentWorkDir) {
+  const container = document.getElementById('wd-list');
+  if (workDirs.length === 0) {
+    container.innerHTML = '<div class="empty-state" style="padding:20px"><p style="font-size:13px">暂无工作目录，请添加</p></div>';
+    return;
+  }
+  container.innerHTML = workDirs.map(d => `
+    <div class="wd-item${d === currentWorkDir ? ' current' : ''}">
+      <div>
+        <span class="wd-path">${escapeHtml(d)}</span>
+        ${d === currentWorkDir ? '<span class="wd-badge">当前</span>' : ''}
+      </div>
+      <div class="wd-actions">
+        ${d !== currentWorkDir ? `<button class="btn btn-primary btn-sm" onclick="switchToWd('${escapeAttr(d)}')">切换</button>` : ''}
+        <button class="btn btn-danger btn-sm" onclick="removeWorkDir('${escapeAttr(d)}')">删除</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function escapeAttr(s) {
+  return s.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'\\"');
+}
+
+async function addWorkDir() {
+  const input = document.getElementById('wd-new-path');
+  const path = input.value.trim();
+  if (!path) return;
+  try {
+    const res = await fetchJSON(API + '/config/workdirs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path })
+    });
+    input.value = '';
+    renderWdList(res.work_dirs, res.current_work_dir);
+    updateWdSelector(res.work_dirs, res.current_work_dir);
+    showMsg('wd-msg', '已添加: ' + path, '#3fb950');
+  } catch(e) {
+    showMsg('wd-msg', '添加失败: ' + e.message, '#f85149');
+  }
+}
+
+async function removeWorkDir(path) {
+  if (!confirm('确定要删除工作目录 "' + path + '" 吗？')) return;
+  try {
+    const res = await fetchJSON(API + '/config/workdirs?path=' + encodeURIComponent(path), {
+      method: 'DELETE'
+    });
+    renderWdList(res.work_dirs, res.current_work_dir);
+    updateWdSelector(res.work_dirs, res.current_work_dir);
+    showMsg('wd-msg', '已删除: ' + path, '#3fb950');
+  } catch(e) {
+    showMsg('wd-msg', '删除失败: ' + e.message, '#f85149');
+  }
+}
+
+async function switchToWd(path) {
+  try {
+    await fetchJSON(API + '/config/switch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path })
+    });
+    refreshAll();
+    showMsg('wd-msg', '已切换到: ' + path, '#3fb950');
+  } catch(e) {
+    showMsg('wd-msg', '切换失败: ' + e.message, '#f85149');
   }
 }
 
 async function saveConfig() {
   const body = {
-    work_dir: document.getElementById('cfg-workdir').value,
     port: parseInt(document.getElementById('cfg-port').value) || 0,
     commit_interval: document.getElementById('cfg-interval').value,
     commit_message: document.getElementById('cfg-message').value,
@@ -641,21 +790,20 @@ async function saveConfig() {
     git_auto_commit: document.getElementById('cfg-auto-commit').checked
   };
   try {
-    const res = await fetch(API + '/config', {
+    await fetchJSON(API + '/config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     });
-    if (!res.ok) throw new Error(res.statusText);
-    showCfgMsg('配置已保存，工作目录变更已生效', '#3fb950');
+    showMsg('cfg-save-msg', '配置已保存', '#3fb950');
     refreshAll();
   } catch(e) {
-    showCfgMsg('保存失败: ' + e.message, '#f85149');
+    showMsg('cfg-save-msg', '保存失败: ' + e.message, '#f85149');
   }
 }
 
-function showCfgMsg(msg, color) {
-  const el = document.getElementById('cfg-save-msg');
+function showMsg(id, msg, color) {
+  const el = document.getElementById(id);
   el.style.display = 'block';
   el.style.color = color;
   el.textContent = msg;

@@ -30,7 +30,7 @@ type CycleResult struct {
 func New(cfg *config.Config) (*Scheduler, error) {
 	s := &Scheduler{
 		cfg:    cfg,
-		gitMgr: git.NewManager(cfg.WorkDir, cfg.AuthorName, cfg.AuthorEmail),
+		gitMgr: git.NewManager(cfg.CurrentWorkDir, cfg.AuthorName, cfg.AuthorEmail),
 		stopCh: make(chan struct{}),
 	}
 
@@ -77,11 +77,16 @@ func (s *Scheduler) runCycle() *CycleResult {
 	result := &CycleResult{Time: time.Now()}
 
 	s.mu.RLock()
-	workDir := s.cfg.WorkDir
+	workDir := s.cfg.CurrentWorkDir
 	qualityHistory := s.cfg.QualityHistory
 	commitMessage := s.cfg.CommitMessage
 	gitMgr := s.gitMgr
 	s.mu.RUnlock()
+
+	if workDir == "" {
+		log.Printf("[scheduler] no current work dir set, skipping cycle")
+		return result
+	}
 
 	g, err := graph.ParseGraphifyOut(workDir)
 	if err != nil {
@@ -138,7 +143,8 @@ func (s *Scheduler) GetStatus() map[string]interface{} {
 	status := map[string]interface{}{
 		"auto_commit_enabled": s.cfg.GitAutoCommit,
 		"commit_interval":     s.cfg.CommitInterval.String(),
-		"work_dir":            s.cfg.WorkDir,
+		"current_work_dir":    s.cfg.CurrentWorkDir,
+		"work_dirs":           s.cfg.WorkDirs,
 		"cron_running":        s.ticker != nil,
 	}
 
@@ -159,12 +165,12 @@ func (s *Scheduler) UpdateConfig(cfg *config.Config) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	oldWorkDir := s.cfg.WorkDir
+	oldWorkDir := s.cfg.CurrentWorkDir
 	s.cfg = cfg
 
-	if cfg.WorkDir != oldWorkDir {
-		s.gitMgr = git.NewManager(cfg.WorkDir, cfg.AuthorName, cfg.AuthorEmail)
-		log.Printf("[scheduler] work_dir updated: %s -> %s", oldWorkDir, cfg.WorkDir)
+	if cfg.CurrentWorkDir != oldWorkDir {
+		s.gitMgr = git.NewManager(cfg.CurrentWorkDir, cfg.AuthorName, cfg.AuthorEmail)
+		log.Printf("[scheduler] current_work_dir updated: %s -> %s", oldWorkDir, cfg.CurrentWorkDir)
 	}
 
 	if s.ticker != nil {

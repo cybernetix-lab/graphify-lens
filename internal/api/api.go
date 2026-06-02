@@ -15,12 +15,12 @@ import (
 )
 
 type Handler struct {
-	scheduler   *scheduler.Scheduler
-	cfg         *config.Config
-	configPath  string
-	workDir     string
-	qualityDir  string
-	mu          sync.RWMutex
+	scheduler  *scheduler.Scheduler
+	cfg        *config.Config
+	configPath string
+	workDir    string
+	qualityDir string
+	mu         sync.RWMutex
 }
 
 func NewHandler(s *scheduler.Scheduler, cfg *config.Config, configPath string) *Handler {
@@ -28,7 +28,7 @@ func NewHandler(s *scheduler.Scheduler, cfg *config.Config, configPath string) *
 		scheduler:  s,
 		cfg:        cfg,
 		configPath: configPath,
-		workDir:    cfg.WorkDir,
+		workDir:    cfg.CurrentWorkDir,
 		qualityDir: cfg.QualityHistory,
 	}
 }
@@ -44,6 +44,8 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/api/cycle/run", h.handleRunCycle)
 	mux.HandleFunc("/api/commits", h.handleCommits)
 	mux.HandleFunc("/api/config", h.handleConfig)
+	mux.HandleFunc("/api/config/workdirs", h.handleWorkDirs)
+	mux.HandleFunc("/api/config/switch", h.handleSwitchWorkDir)
 }
 
 func (h *Handler) getWorkDir() string {
@@ -187,30 +189,32 @@ func (h *Handler) handleConfig(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		h.mu.RLock()
 		resp := map[string]interface{}{
-			"work_dir":        h.workDir,
-			"port":            h.cfg.Port,
-			"git_auto_commit": h.cfg.GitAutoCommit,
-			"commit_interval": h.cfg.CommitInterval.String(),
-			"commit_message":  h.cfg.CommitMessage,
-			"quality_history": h.qualityDir,
-			"data_dir":        h.cfg.DataDir,
-			"author_name":     h.cfg.AuthorName,
-			"author_email":    h.cfg.AuthorEmail,
+			"work_dirs":        h.cfg.WorkDirs,
+			"current_work_dir": h.cfg.CurrentWorkDir,
+			"port":             h.cfg.Port,
+			"git_auto_commit":  h.cfg.GitAutoCommit,
+			"commit_interval":  h.cfg.CommitInterval.String(),
+			"commit_message":   h.cfg.CommitMessage,
+			"quality_history":  h.qualityDir,
+			"data_dir":         h.cfg.DataDir,
+			"author_name":      h.cfg.AuthorName,
+			"author_email":     h.cfg.AuthorEmail,
 		}
 		h.mu.RUnlock()
 		writeJSON(w, http.StatusOK, resp)
 
 	case http.MethodPost:
 		var req struct {
-			WorkDir        string `json:"work_dir"`
-			Port           int    `json:"port"`
-			GitAutoCommit  *bool  `json:"git_auto_commit"`
-			CommitInterval string `json:"commit_interval"`
-			CommitMessage  string `json:"commit_message"`
-			QualityHistory string `json:"quality_history"`
-			DataDir        string `json:"data_dir"`
-			AuthorName     string `json:"author_name"`
-			AuthorEmail    string `json:"author_email"`
+			WorkDirs       []string `json:"work_dirs"`
+			CurrentWorkDir string   `json:"current_work_dir"`
+			Port           int      `json:"port"`
+			GitAutoCommit  *bool    `json:"git_auto_commit"`
+			CommitInterval string   `json:"commit_interval"`
+			CommitMessage  string   `json:"commit_message"`
+			QualityHistory string   `json:"quality_history"`
+			DataDir        string   `json:"data_dir"`
+			AuthorName     string   `json:"author_name"`
+			AuthorEmail    string   `json:"author_email"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -218,9 +222,12 @@ func (h *Handler) handleConfig(w http.ResponseWriter, r *http.Request) {
 		}
 
 		h.mu.Lock()
-		if req.WorkDir != "" {
-			h.workDir = req.WorkDir
-			h.cfg.WorkDir = req.WorkDir
+		if req.WorkDirs != nil {
+			h.cfg.WorkDirs = req.WorkDirs
+		}
+		if req.CurrentWorkDir != "" {
+			h.workDir = req.CurrentWorkDir
+			h.cfg.CurrentWorkDir = req.CurrentWorkDir
 		}
 		if req.Port > 0 {
 			h.cfg.Port = req.Port
@@ -266,10 +273,150 @@ func (h *Handler) handleConfig(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (h *Handler) handleWorkDirs(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		h.mu.RLock()
+		resp := map[string]interface{}{
+			"work_dirs":        h.cfg.WorkDirs,
+			"current_work_dir": h.cfg.CurrentWorkDir,
+		}
+		h.mu.RUnlock()
+		writeJSON(w, http.StatusOK, resp)
+
+	case http.MethodPost:
+		var req struct {
+			Path string `json:"path"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		if req.Path == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "path is required"})
+			return
+		}
+
+		h.mu.Lock()
+		for _, d := range h.cfg.WorkDirs {
+			if d == req.Path {
+				h.mu.Unlock()
+				writeJSON(w, http.StatusConflict, map[string]string{"error": "path already exists"})
+				return
+			}
+		}
+		h.cfg.WorkDirs = append(h.cfg.WorkDirs, req.Path)
+		if h.cfg.CurrentWorkDir == "" {
+			h.cfg.CurrentWorkDir = req.Path
+			h.workDir = req.Path
+		}
+		h.mu.Unlock()
+
+		h.scheduler.UpdateConfig(h.cfg)
+		h.saveConfig()
+
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"status":           "ok",
+			"work_dirs":        h.cfg.WorkDirs,
+			"current_work_dir": h.cfg.CurrentWorkDir,
+		})
+
+	case http.MethodDelete:
+		path := r.URL.Query().Get("path")
+		if path == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "path query param required"})
+			return
+		}
+
+		h.mu.Lock()
+		var newDirs []string
+		for _, d := range h.cfg.WorkDirs {
+			if d != path {
+				newDirs = append(newDirs, d)
+			}
+		}
+		h.cfg.WorkDirs = newDirs
+		if h.cfg.CurrentWorkDir == path {
+			if len(newDirs) > 0 {
+				h.cfg.CurrentWorkDir = newDirs[0]
+				h.workDir = newDirs[0]
+			} else {
+				h.cfg.CurrentWorkDir = ""
+				h.workDir = ""
+			}
+		}
+		h.mu.Unlock()
+
+		h.scheduler.UpdateConfig(h.cfg)
+		h.saveConfig()
+
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"status":           "ok",
+			"work_dirs":        h.cfg.WorkDirs,
+			"current_work_dir": h.cfg.CurrentWorkDir,
+		})
+
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "GET, POST or DELETE required"})
+	}
+}
+
+func (h *Handler) handleSwitchWorkDir(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "POST required"})
+		return
+	}
+
+	var req struct {
+		Path string `json:"path"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	if req.Path == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "path is required"})
+		return
+	}
+
+	found := false
+	for _, d := range h.cfg.WorkDirs {
+		if d == req.Path {
+			found = true
+			break
+		}
+	}
+	if !found {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "path not in work_dirs"})
+		return
+	}
+
+	h.mu.Lock()
+	h.workDir = req.Path
+	h.cfg.CurrentWorkDir = req.Path
+	h.mu.Unlock()
+
+	h.scheduler.UpdateConfig(h.cfg)
+	h.saveConfig()
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"status":           "ok",
+		"current_work_dir": req.Path,
+	})
+}
+
+func (h *Handler) saveConfig() {
+	if h.configPath != "" {
+		if err := h.cfg.Save(h.configPath); err != nil {
+			log.Printf("[api] save config error: %v", err)
+		}
+	}
+}
+
 func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(data)

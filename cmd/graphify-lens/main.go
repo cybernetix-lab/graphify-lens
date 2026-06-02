@@ -26,6 +26,9 @@ func main() {
 		log.Fatalf("load config: %v", err)
 	}
 
+	canonicalPath := config.CanonicalPath()
+	log.Printf("[config] canonical path: %s", canonicalPath)
+
 	if err := ensureDirs(cfg); err != nil {
 		log.Fatalf("ensure dirs: %v", err)
 	}
@@ -37,7 +40,7 @@ func main() {
 	sched.Start()
 	defer sched.Stop()
 
-	handler := api.NewHandler(sched, cfg, *configPath)
+	handler := api.NewHandler(sched, cfg, canonicalPath)
 
 	mux := http.NewServeMux()
 	handler.Register(mux)
@@ -55,7 +58,8 @@ func main() {
 
 	go func() {
 		log.Printf("[server] listening on %s", server.Addr)
-		log.Printf("[server] work_dir=%s", cfg.WorkDir)
+		log.Printf("[server] current_work_dir=%s", cfg.CurrentWorkDir)
+		log.Printf("[server] work_dirs=%v", cfg.WorkDirs)
 		log.Printf("[server] auto_commit=%v interval=%s", cfg.GitAutoCommit, cfg.CommitInterval)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("server: %v", err)
@@ -70,10 +74,11 @@ func main() {
 
 func ensureDirs(cfg *config.Config) error {
 	dirs := []string{
-		cfg.WorkDir,
 		cfg.QualityHistory,
 		cfg.DataDir,
-		filepath.Join(cfg.WorkDir, "graphify-out"),
+	}
+	for _, d := range cfg.WorkDirs {
+		dirs = append(dirs, d, filepath.Join(d, "graphify-out"))
 	}
 	for _, d := range dirs {
 		if err := os.MkdirAll(d, 0755); err != nil {
@@ -90,7 +95,7 @@ func addr(port int) string {
 func withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusOK)

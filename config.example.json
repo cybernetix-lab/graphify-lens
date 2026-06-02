@@ -1,5 +1,6 @@
 {
-  "work_dir": "./data/sample",
+  "work_dirs": ["./data/sample"],
+  "current_work_dir": "./data/sample",
   "port": 8080,
   "git_auto_commit": true,
   "commit_interval": "30m",

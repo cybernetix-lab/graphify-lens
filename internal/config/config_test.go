@@ -21,7 +21,7 @@ func TestDefaultConfig(t *testing.T) {
 }
 
 func TestLoad_NoFile(t *testing.T) {
-	cfg, err := Load("/nonexistent/path/config.json")
+	cfg, err := Load("")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -43,7 +43,7 @@ func TestLoad_EmptyPath(t *testing.T) {
 func TestLoad_ValidFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
-	content := `{"port": 9090, "git_auto_commit": false, "commit_interval": "1h", "work_dir": "/tmp/test"}`
+	content := `{"port": 9090, "git_auto_commit": false, "commit_interval": "1h", "work_dirs": ["/tmp/test"], "current_work_dir": "/tmp/test"}`
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -61,8 +61,11 @@ func TestLoad_ValidFile(t *testing.T) {
 	if cfg.CommitInterval != 1*time.Hour {
 		t.Errorf("expected 1h interval, got %s", cfg.CommitInterval)
 	}
-	if cfg.WorkDir != "/tmp/test" {
-		t.Errorf("expected /tmp/test, got %s", cfg.WorkDir)
+	if len(cfg.WorkDirs) != 1 || cfg.WorkDirs[0] != "/tmp/test" {
+		t.Errorf("expected work_dirs [/tmp/test], got %v", cfg.WorkDirs)
+	}
+	if cfg.CurrentWorkDir != "/tmp/test" {
+		t.Errorf("expected current_work_dir /tmp/test, got %s", cfg.CurrentWorkDir)
 	}
 }
 
@@ -76,6 +79,26 @@ func TestLoad_InvalidJSON(t *testing.T) {
 	_, err := Load(path)
 	if err == nil {
 		t.Error("expected error for invalid JSON")
+	}
+}
+
+func TestLoad_BackwardCompatWorkDir(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	content := `{"work_dir": "/tmp/oldstyle"}`
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(cfg.WorkDirs) != 1 || cfg.WorkDirs[0] != "/tmp/oldstyle" {
+		t.Errorf("expected work_dirs [/tmp/oldstyle], got %v", cfg.WorkDirs)
+	}
+	if cfg.CurrentWorkDir != "/tmp/oldstyle" {
+		t.Errorf("expected current_work_dir /tmp/oldstyle, got %s", cfg.CurrentWorkDir)
 	}
 }
 

@@ -8,21 +8,28 @@ import (
 )
 
 type Config struct {
-	WorkDir          string        `json:"work_dir"`
-	Port             int           `json:"port"`
-	GitAutoCommit    bool          `json:"git_auto_commit"`
-	CommitInterval   time.Duration `json:"commit_interval"`
-	CommitMessage    string        `json:"commit_message"`
-	QualityHistory   string        `json:"quality_history"`
-	DataDir          string        `json:"data_dir"`
-	AuthorName       string        `json:"author_name"`
-	AuthorEmail      string        `json:"author_email"`
+	WorkDirs       []string      `json:"work_dirs"`
+	CurrentWorkDir string        `json:"current_work_dir"`
+	Port           int           `json:"port"`
+	GitAutoCommit  bool          `json:"git_auto_commit"`
+	CommitInterval time.Duration `json:"commit_interval"`
+	CommitMessage  string        `json:"commit_message"`
+	QualityHistory string        `json:"quality_history"`
+	DataDir        string        `json:"data_dir"`
+	AuthorName     string        `json:"author_name"`
+	AuthorEmail    string        `json:"author_email"`
+}
+
+func CanonicalPath() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".graphify-lens.json")
 }
 
 func DefaultConfig() *Config {
 	home, _ := os.UserHomeDir()
 	return &Config{
-		WorkDir:        filepath.Join(home, ".graphify-lens", "data"),
+		WorkDirs:       []string{},
+		CurrentWorkDir: "",
 		Port:           8080,
 		GitAutoCommit:  true,
 		CommitInterval: 30 * time.Minute,
@@ -35,10 +42,40 @@ func DefaultConfig() *Config {
 }
 
 func Load(path string) (*Config, error) {
-	cfg := DefaultConfig()
+	canonical := CanonicalPath()
+
 	if path == "" {
-		return cfg, nil
+		if _, err := os.Stat(canonical); err == nil {
+			return loadFile(canonical)
+		}
+		return DefaultConfig(), nil
 	}
+
+	if path != canonical {
+		if err := copyConfig(path, canonical); err != nil {
+			return nil, err
+		}
+	}
+
+	return loadFile(canonical)
+}
+
+func copyConfig(src, dst string) error {
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+
+	dir := filepath.Dir(dst)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+	return os.WriteFile(dst, data, 0644)
+}
+
+func loadFile(path string) (*Config, error) {
+	cfg := DefaultConfig()
+
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -48,15 +85,17 @@ func Load(path string) (*Config, error) {
 	}
 
 	type rawConfig struct {
-		WorkDir        string `json:"work_dir"`
-		Port           int    `json:"port"`
-		GitAutoCommit  *bool  `json:"git_auto_commit"`
-		CommitInterval string `json:"commit_interval"`
-		CommitMessage  string `json:"commit_message"`
-		QualityHistory string `json:"quality_history"`
-		DataDir        string `json:"data_dir"`
-		AuthorName     string `json:"author_name"`
-		AuthorEmail    string `json:"author_email"`
+		WorkDir        string   `json:"work_dir"`
+		WorkDirs       []string `json:"work_dirs"`
+		CurrentWorkDir string   `json:"current_work_dir"`
+		Port           int      `json:"port"`
+		GitAutoCommit  *bool    `json:"git_auto_commit"`
+		CommitInterval string   `json:"commit_interval"`
+		CommitMessage  string   `json:"commit_message"`
+		QualityHistory string   `json:"quality_history"`
+		DataDir        string   `json:"data_dir"`
+		AuthorName     string   `json:"author_name"`
+		AuthorEmail    string   `json:"author_email"`
 	}
 
 	var raw rawConfig
@@ -64,9 +103,20 @@ func Load(path string) (*Config, error) {
 		return nil, err
 	}
 
-	if raw.WorkDir != "" {
-		cfg.WorkDir = raw.WorkDir
+	if raw.WorkDir != "" && len(raw.WorkDirs) == 0 {
+		raw.WorkDirs = []string{raw.WorkDir}
 	}
+
+	if len(raw.WorkDirs) > 0 {
+		cfg.WorkDirs = raw.WorkDirs
+	}
+
+	if raw.CurrentWorkDir != "" {
+		cfg.CurrentWorkDir = raw.CurrentWorkDir
+	} else if len(cfg.WorkDirs) > 0 {
+		cfg.CurrentWorkDir = cfg.WorkDirs[0]
+	}
+
 	if raw.Port > 0 {
 		cfg.Port = raw.Port
 	}
@@ -99,15 +149,16 @@ func Load(path string) (*Config, error) {
 }
 
 type configForJSON struct {
-	WorkDir        string `json:"work_dir"`
-	Port           int    `json:"port"`
-	GitAutoCommit  bool   `json:"git_auto_commit"`
-	CommitInterval string `json:"commit_interval"`
-	CommitMessage  string `json:"commit_message"`
-	QualityHistory string `json:"quality_history"`
-	DataDir        string `json:"data_dir"`
-	AuthorName     string `json:"author_name"`
-	AuthorEmail    string `json:"author_email"`
+	WorkDirs       []string `json:"work_dirs"`
+	CurrentWorkDir string   `json:"current_work_dir"`
+	Port           int      `json:"port"`
+	GitAutoCommit  bool     `json:"git_auto_commit"`
+	CommitInterval string   `json:"commit_interval"`
+	CommitMessage  string   `json:"commit_message"`
+	QualityHistory string   `json:"quality_history"`
+	DataDir        string   `json:"data_dir"`
+	AuthorName     string   `json:"author_name"`
+	AuthorEmail    string   `json:"author_email"`
 }
 
 func (c *Config) Save(path string) error {
@@ -117,7 +168,8 @@ func (c *Config) Save(path string) error {
 	}
 
 	raw := configForJSON{
-		WorkDir:        c.WorkDir,
+		WorkDirs:       c.WorkDirs,
+		CurrentWorkDir: c.CurrentWorkDir,
 		Port:           c.Port,
 		GitAutoCommit:  c.GitAutoCommit,
 		CommitInterval: c.CommitInterval.String(),
