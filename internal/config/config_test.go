@@ -43,7 +43,7 @@ func TestLoad_EmptyPath(t *testing.T) {
 func TestLoad_ValidFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
-	content := `{"port": 9090, "git_auto_commit": false, "commit_interval": "1h", "work_dirs": ["/tmp/test"], "current_work_dir": "/tmp/test"}`
+	content := `{"port": 9090, "git_auto_commit": false, "commit_interval": "1h", "work_dirs": ["/tmp/test"]}`
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -63,9 +63,6 @@ func TestLoad_ValidFile(t *testing.T) {
 	}
 	if len(cfg.WorkDirs) != 1 || cfg.WorkDirs[0] != "/tmp/test" {
 		t.Errorf("expected work_dirs [/tmp/test], got %v", cfg.WorkDirs)
-	}
-	if cfg.CurrentWorkDir != "/tmp/test" {
-		t.Errorf("expected current_work_dir /tmp/test, got %s", cfg.CurrentWorkDir)
 	}
 }
 
@@ -97,8 +94,26 @@ func TestLoad_BackwardCompatWorkDir(t *testing.T) {
 	if len(cfg.WorkDirs) != 1 || cfg.WorkDirs[0] != "/tmp/oldstyle" {
 		t.Errorf("expected work_dirs [/tmp/oldstyle], got %v", cfg.WorkDirs)
 	}
-	if cfg.CurrentWorkDir != "/tmp/oldstyle" {
-		t.Errorf("expected current_work_dir /tmp/oldstyle, got %s", cfg.CurrentWorkDir)
+}
+
+func TestExpandPath(t *testing.T) {
+	home, _ := os.UserHomeDir()
+
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"/tmp/test", "/tmp/test"},
+		{"./relative", "./relative"},
+		{"~/Projects/monorepo", filepath.Join(home, "Projects/monorepo")},
+		{"~", home},
+	}
+
+	for _, tt := range tests {
+		result := ExpandPath(tt.input)
+		if result != tt.expected {
+			t.Errorf("ExpandPath(%q) = %q, want %q", tt.input, result, tt.expected)
+		}
 	}
 }
 

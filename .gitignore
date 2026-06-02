@@ -14,6 +14,10 @@
 .DS_Store
 Thumbs.db
 
+# Graphify output — graph.json is too large for git, snapshot.json is the version-controlled summary
+**/graphify-out/graph.json
+!**/graphify-out/snapshot.json
+
 # Runtime data (generated at runtime, never committed)
 ~/.graphify-lens/
 

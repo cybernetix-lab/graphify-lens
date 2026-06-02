@@ -4,12 +4,12 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
 type Config struct {
 	WorkDirs       []string      `json:"work_dirs"`
-	CurrentWorkDir string        `json:"current_work_dir"`
 	Port           int           `json:"port"`
 	GitAutoCommit  bool          `json:"git_auto_commit"`
 	CommitInterval time.Duration `json:"commit_interval"`
@@ -29,7 +29,6 @@ func DefaultConfig() *Config {
 	home, _ := os.UserHomeDir()
 	return &Config{
 		WorkDirs:       []string{},
-		CurrentWorkDir: "",
 		Port:           8080,
 		GitAutoCommit:  true,
 		CommitInterval: 30 * time.Minute,
@@ -39,6 +38,19 @@ func DefaultConfig() *Config {
 		AuthorName:     "Graphify Lens Bot",
 		AuthorEmail:    "graphify-lens-bot@teambuddy.local",
 	}
+}
+
+func ExpandPath(path string) string {
+	if strings.HasPrefix(path, "~/") || path == "~" {
+		home, err := os.UserHomeDir()
+		if err == nil {
+			if path == "~" {
+				return home
+			}
+			return filepath.Join(home, path[2:])
+		}
+	}
+	return path
 }
 
 func Load(path string) (*Config, error) {
@@ -108,13 +120,10 @@ func loadFile(path string) (*Config, error) {
 	}
 
 	if len(raw.WorkDirs) > 0 {
-		cfg.WorkDirs = raw.WorkDirs
-	}
-
-	if raw.CurrentWorkDir != "" {
-		cfg.CurrentWorkDir = raw.CurrentWorkDir
-	} else if len(cfg.WorkDirs) > 0 {
-		cfg.CurrentWorkDir = cfg.WorkDirs[0]
+		cfg.WorkDirs = make([]string, len(raw.WorkDirs))
+		for i, d := range raw.WorkDirs {
+			cfg.WorkDirs[i] = ExpandPath(d)
+		}
 	}
 
 	if raw.Port > 0 {
@@ -133,10 +142,10 @@ func loadFile(path string) (*Config, error) {
 		cfg.CommitMessage = raw.CommitMessage
 	}
 	if raw.QualityHistory != "" {
-		cfg.QualityHistory = raw.QualityHistory
+		cfg.QualityHistory = ExpandPath(raw.QualityHistory)
 	}
 	if raw.DataDir != "" {
-		cfg.DataDir = raw.DataDir
+		cfg.DataDir = ExpandPath(raw.DataDir)
 	}
 	if raw.AuthorName != "" {
 		cfg.AuthorName = raw.AuthorName
@@ -150,7 +159,6 @@ func loadFile(path string) (*Config, error) {
 
 type configForJSON struct {
 	WorkDirs       []string `json:"work_dirs"`
-	CurrentWorkDir string   `json:"current_work_dir"`
 	Port           int      `json:"port"`
 	GitAutoCommit  bool     `json:"git_auto_commit"`
 	CommitInterval string   `json:"commit_interval"`
@@ -169,7 +177,6 @@ func (c *Config) Save(path string) error {
 
 	raw := configForJSON{
 		WorkDirs:       c.WorkDirs,
-		CurrentWorkDir: c.CurrentWorkDir,
 		Port:           c.Port,
 		GitAutoCommit:  c.GitAutoCommit,
 		CommitInterval: c.CommitInterval.String(),

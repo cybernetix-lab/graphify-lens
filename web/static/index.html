@@ -13,10 +13,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .header .status .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
 .header .status .dot.green { background: #3fb950; }
 .header .status .dot.red { background: #f85149; }
-.header .status .dot.yellow { background: #d29922; }
 .header .wd-selector { display: flex; align-items: center; gap: 8px; }
 .header .wd-selector label { font-size: 12px; color: #8b949e; white-space: nowrap; }
-.header .wd-selector select { padding: 4px 8px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #e1e4e8; font-size: 13px; min-width: 200px; }
+.header .wd-selector select { padding: 4px 8px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #e1e4e8; font-size: 13px; min-width: 220px; }
 .header .wd-selector select:focus { outline: none; border-color: #58a6ff; }
 .tabs { display: flex; gap: 0; background: #161b22; border-bottom: 1px solid #30363d; padding: 0 24px; }
 .tab { padding: 10px 20px; cursor: pointer; font-size: 14px; color: #8b949e; border-bottom: 2px solid transparent; transition: all 0.2s; }
@@ -94,13 +93,17 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 
 .wd-list { margin-bottom: 20px; }
 .wd-item { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; margin-bottom: 8px; }
-.wd-item.current { border-color: #58a6ff; background: #0d1a2d; }
 .wd-item .wd-path { font-size: 14px; color: #e1e4e8; font-family: monospace; }
-.wd-item .wd-badge { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: #1f6feb; color: #fff; margin-left: 8px; }
 .wd-item .wd-actions { display: flex; gap: 6px; }
 .wd-add { display: flex; gap: 8px; margin-bottom: 16px; }
 .wd-add input { flex: 1; padding: 8px 12px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #e1e4e8; font-size: 14px; }
 .wd-add input:focus { outline: none; border-color: #58a6ff; }
+
+.dir-status { margin-bottom: 16px; }
+.dir-status-item { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; margin-bottom: 6px; font-size: 13px; }
+.dir-status-item .ds-path { font-family: monospace; color: #e1e4e8; }
+.dir-status-item .ds-score { color: #58a6ff; font-weight: 600; }
+.dir-status-item .ds-time { color: #8b949e; font-size: 12px; }
 
 .msg { font-size: 13px; margin-top: 8px; display: none; }
 </style>
@@ -109,8 +112,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 <div class="header">
   <h1>🧠 Graphify Lens - 知识库管理</h1>
   <div class="wd-selector">
-    <label>📂 工作目录：</label>
-    <select id="wd-select" onchange="switchWorkDir()">
+    <label>📂 查看目录：</label>
+    <select id="wd-select" onchange="onWdChange()">
       <option value="">-- 未选择 --</option>
     </select>
   </div>
@@ -170,14 +173,15 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
   <div id="panel-settings" class="panel">
     <div class="settings">
       <div class="card">
-        <h3>📂 工作目录管理</h3>
+        <h3>📂 工作目录管理（所有目录均独立执行定时任务）</h3>
         <div class="wd-add">
-          <input type="text" id="wd-new-path" placeholder="输入工作目录路径，如 ./data/project-a" onkeydown="if(event.key==='Enter')addWorkDir()">
+          <input type="text" id="wd-new-path" placeholder="输入工作目录路径，如 ~/Projects/monorepo" onkeydown="if(event.key==='Enter')addWorkDir()">
           <button class="btn btn-primary" onclick="addWorkDir()">添加</button>
         </div>
         <div class="wd-list" id="wd-list">
           <div class="loading"><div class="spinner"></div></div>
         </div>
+        <div class="dir-status" id="dir-status"></div>
         <div id="wd-msg" class="msg"></div>
       </div>
       <div class="card" style="margin-top:16px">
@@ -220,7 +224,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
         <div class="btn-group">
           <button class="btn btn-primary" onclick="saveConfig()">保存配置</button>
           <button class="btn btn-secondary" onclick="loadConfig()">重新加载</button>
-          <button class="btn btn-secondary" onclick="runCycle()">立即执行周期</button>
+          <button class="btn btn-secondary" onclick="runCycle()">立即执行所有周期</button>
           <button class="btn btn-secondary" onclick="refreshAll()">刷新状态</button>
         </div>
       </div>
@@ -242,6 +246,16 @@ let currentType = '';
 let currentOffset = 0;
 let currentLimit = 500;
 let graphSimulation = null;
+
+function selectedWorkDir() {
+  return document.getElementById('wd-select').value;
+}
+
+function apiURL(path) {
+  const wd = selectedWorkDir();
+  const sep = path.includes('?') ? '&' : '?';
+  return wd ? API + path + sep + 'work_dir=' + encodeURIComponent(wd) : API + path;
+}
 
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
@@ -265,26 +279,37 @@ async function fetchJSON(url, opts) {
 async function refreshAll() {
   try {
     const status = await fetchJSON(API + '/status');
-    document.getElementById('status-score').textContent = '质量分: ' + (status.last_score != null ? status.last_score.toFixed(1) : '--');
     document.getElementById('status-commit').textContent = '自动提交: ' + (status.auto_commit_enabled ? '开启' : '关闭');
-    updateWdSelector(status.work_dirs || [], status.current_work_dir || '');
+    updateWdSelector(status.work_dirs || [], status.dir_statuses || []);
   } catch(e) { console.error(e); }
 }
 
-function updateWdSelector(workDirs, currentWorkDir) {
+function updateWdSelector(workDirs, dirStatuses) {
   const sel = document.getElementById('wd-select');
   const oldVal = sel.value;
   sel.innerHTML = '<option value="">-- 未选择 --</option>';
   workDirs.forEach(d => {
     const opt = document.createElement('option');
     opt.value = d;
-    opt.textContent = d;
-    if (d === currentWorkDir) opt.selected = true;
+    const ds = (dirStatuses || []).find(s => s.work_dir === d);
+    let label = d;
+    if (ds && ds.last_score != null) {
+      label += '  [' + ds.last_score.toFixed(1) + ']';
+    }
+    opt.textContent = label;
+    if (d === oldVal) opt.selected = true;
     sel.appendChild(opt);
   });
-  if (sel.value !== oldVal && currentWorkDir) {
+  if (!sel.value && workDirs.length > 0) {
+    sel.value = workDirs[0];
+  }
+  if (sel.value !== oldVal) {
     refreshPanels();
   }
+}
+
+function onWdChange() {
+  refreshPanels();
 }
 
 function refreshPanels() {
@@ -297,27 +322,12 @@ function refreshPanels() {
   }
 }
 
-async function switchWorkDir() {
-  const path = document.getElementById('wd-select').value;
-  if (!path) return;
-  try {
-    await fetchJSON(API + '/config/switch', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path })
-    });
-    refreshAll();
-  } catch(e) {
-    alert('切换失败: ' + e.message);
-    refreshAll();
-  }
-}
-
 async function runCycle() {
   try {
     const res = await fetch(API + '/cycle/run', { method: 'POST' });
     const data = await res.json();
-    alert('周期执行完成！质量分: ' + (data.assessment ? data.assessment.total_score.toFixed(1) : 'N/A'));
+    const count = Object.keys(data).length;
+    alert('周期执行完成！共处理 ' + count + ' 个工作目录');
     refreshAll();
   } catch(e) { alert('执行失败: ' + e.message); }
 }
@@ -348,15 +358,23 @@ async function renderGraph() {
   const info = document.getElementById('search-info');
   const pagination = document.getElementById('pagination');
 
+  const wd = selectedWorkDir();
+  if (!wd) {
+    container.innerHTML = '<div class="empty-state"><div class="icon">📂</div><p>请先选择或添加一个工作目录</p></div>';
+    info.innerHTML = '';
+    pagination.innerHTML = '';
+    return;
+  }
+
   try {
-    let url = API + '/graph/query?limit=' + currentLimit + '&offset=' + currentOffset;
+    let url = apiURL('/graph/query') + '&limit=' + currentLimit + '&offset=' + currentOffset;
     if (currentQuery) url += '&q=' + encodeURIComponent(currentQuery);
     if (currentType) url += '&type=' + encodeURIComponent(currentType);
 
     const data = await fetchJSON(url);
 
     if (!data.nodes || data.nodes.length === 0) {
-      container.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>未找到匹配的节点</p><p style="font-size:12px;margin-top:8px">尝试其他搜索关键词或确认工作目录中有 graphify-out 数据</p></div>';
+      container.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>未找到匹配的节点</p><p style="font-size:12px;margin-top:8px">确认工作目录 ' + escapeHtml(wd) + ' 中有 graphify-out/graph.json 数据</p></div>';
       info.innerHTML = '';
       pagination.innerHTML = '';
       return;
@@ -433,11 +451,11 @@ async function renderGraph() {
     node.on('mouseover', (event, d) => {
       tooltip.style.display = 'block';
       tooltip.innerHTML = `
-        <div class="tt-title">${d.label || d.id}</div>
+        <div class="tt-title">${escapeHtml(d.label || d.id)}</div>
         <div class="tt-row"><span class="tt-label">类型</span><span class="tt-value">${d.file_type || 'unknown'}</span></div>
-        <div class="tt-row"><span class="tt-label">来源</span><span class="tt-value">${d.source_file || '未设置'}</span></div>
-        <div class="tt-row"><span class="tt-label">作者</span><span class="tt-value">${d.author || '未设置'}</span></div>
-        <div class="tt-row"><span class="tt-label">贡献者</span><span class="tt-value">${d.contributor || '未设置'}</span></div>
+        <div class="tt-row"><span class="tt-label">来源</span><span class="tt-value">${escapeHtml(d.source_file || '未设置')}</span></div>
+        <div class="tt-row"><span class="tt-label">作者</span><span class="tt-value">${escapeHtml(d.author || '未设置')}</span></div>
+        <div class="tt-row"><span class="tt-label">贡献者</span><span class="tt-value">${escapeHtml(d.contributor || '未设置')}</span></div>
       `;
     }).on('mousemove', (event) => {
       tooltip.style.left = (event.offsetX + 15) + 'px';
@@ -464,17 +482,22 @@ async function renderGraph() {
 
 async function renderDashboard() {
   const container = document.getElementById('dashboard-content');
+  const wd = selectedWorkDir();
+  if (!wd) {
+    container.innerHTML = '<div class="empty-state"><div class="icon">📂</div><p>请先选择或添加一个工作目录</p></div>';
+    return;
+  }
   try {
     const [quality, stats] = await Promise.all([
-      fetchJSON(API + '/quality/current'),
-      fetchJSON(API + '/stats')
+      fetchJSON(apiURL('/quality/current')),
+      fetchJSON(apiURL('/stats'))
     ]);
 
     const scoreColor = quality.total_score >= 80 ? '#3fb950' : quality.total_score >= 60 ? '#d29922' : '#f85149';
 
     container.innerHTML = `
       <div class="card" style="grid-column: 1/-1; text-align:center">
-        <h3>知识质量总分</h3>
+        <h3>知识质量总分 · ${escapeHtml(wd)}</h3>
         <div class="big-number" style="color:${scoreColor}">${quality.total_score.toFixed(1)}</div>
         <div class="subtitle">Knowledge Quality Score · ${new Date(quality.timestamp).toLocaleString('zh-CN')}</div>
       </div>
@@ -688,7 +711,10 @@ async function renderHistory() {
 
 async function loadConfig() {
   try {
-    const cfg = await fetchJSON(API + '/config');
+    const [cfg, status] = await Promise.all([
+      fetchJSON(API + '/config'),
+      fetchJSON(API + '/status')
+    ]);
     document.getElementById('cfg-port').value = cfg.port || 8080;
     document.getElementById('cfg-interval').value = cfg.commit_interval || '30m';
     document.getElementById('cfg-message').value = cfg.commit_message || '';
@@ -697,38 +723,50 @@ async function loadConfig() {
     document.getElementById('cfg-author-name').value = cfg.author_name || '';
     document.getElementById('cfg-author-email').value = cfg.author_email || '';
     document.getElementById('cfg-auto-commit').checked = cfg.git_auto_commit !== false;
-    renderWdList(cfg.work_dirs || [], cfg.current_work_dir || '');
+    renderWdList(cfg.work_dirs || [], status.dir_statuses || []);
   } catch(e) {
     showMsg('cfg-save-msg', '加载失败: ' + e.message, '#f85149');
   }
 }
 
-function renderWdList(workDirs, currentWorkDir) {
+function renderWdList(workDirs, dirStatuses) {
   const container = document.getElementById('wd-list');
   if (workDirs.length === 0) {
     container.innerHTML = '<div class="empty-state" style="padding:20px"><p style="font-size:13px">暂无工作目录，请添加</p></div>';
+  } else {
+    container.innerHTML = workDirs.map(d => `
+      <div class="wd-item">
+        <span class="wd-path">${escapeHtml(d)}</span>
+        <div class="wd-actions">
+          <button class="btn btn-danger btn-sm" onclick="removeWorkDir('${escapeAttr(d)}')">删除</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  const statusContainer = document.getElementById('dir-status');
+  if (dirStatuses.length === 0) {
+    statusContainer.innerHTML = '';
     return;
   }
-  container.innerHTML = workDirs.map(d => `
-    <div class="wd-item${d === currentWorkDir ? ' current' : ''}">
-      <div>
-        <span class="wd-path">${escapeHtml(d)}</span>
-        ${d === currentWorkDir ? '<span class="wd-badge">当前</span>' : ''}
+  statusContainer.innerHTML = '<h4 style="font-size:13px;color:#8b949e;margin-bottom:8px">各目录状态</h4>' +
+    dirStatuses.map(ds => `
+      <div class="dir-status-item">
+        <span class="ds-path">${escapeHtml(ds.work_dir)}</span>
+        <span>
+          <span class="ds-score">${ds.last_score != null ? ds.last_score.toFixed(1) : '--'}</span>
+          <span class="ds-time">${ds.last_cycle ? ' · ' + new Date(ds.last_cycle).toLocaleString('zh-CN') : ''}</span>
+        </span>
       </div>
-      <div class="wd-actions">
-        ${d !== currentWorkDir ? `<button class="btn btn-primary btn-sm" onclick="switchToWd('${escapeAttr(d)}')">切换</button>` : ''}
-        <button class="btn btn-danger btn-sm" onclick="removeWorkDir('${escapeAttr(d)}')">删除</button>
-      </div>
-    </div>
-  `).join('');
+    `).join('');
 }
 
 function escapeHtml(s) {
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 function escapeAttr(s) {
-  return s.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'\\"');
+  return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'\\"');
 }
 
 async function addWorkDir() {
@@ -742,39 +780,27 @@ async function addWorkDir() {
       body: JSON.stringify({ path })
     });
     input.value = '';
-    renderWdList(res.work_dirs, res.current_work_dir);
-    updateWdSelector(res.work_dirs, res.current_work_dir);
+    renderWdList(res.work_dirs, []);
+    updateWdSelector(res.work_dirs, []);
     showMsg('wd-msg', '已添加: ' + path, '#3fb950');
+    refreshAll();
   } catch(e) {
     showMsg('wd-msg', '添加失败: ' + e.message, '#f85149');
   }
 }
 
 async function removeWorkDir(path) {
-  if (!confirm('确定要删除工作目录 "' + path + '" 吗？')) return;
+  if (!confirm('确定要删除工作目录 "' + path + '" 吗？\n注意：仅从配置中移除，不会删除实际文件。')) return;
   try {
     const res = await fetchJSON(API + '/config/workdirs?path=' + encodeURIComponent(path), {
       method: 'DELETE'
     });
-    renderWdList(res.work_dirs, res.current_work_dir);
-    updateWdSelector(res.work_dirs, res.current_work_dir);
+    renderWdList(res.work_dirs, []);
+    updateWdSelector(res.work_dirs, []);
     showMsg('wd-msg', '已删除: ' + path, '#3fb950');
+    refreshAll();
   } catch(e) {
     showMsg('wd-msg', '删除失败: ' + e.message, '#f85149');
-  }
-}
-
-async function switchToWd(path) {
-  try {
-    await fetchJSON(API + '/config/switch', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path })
-    });
-    refreshAll();
-    showMsg('wd-msg', '已切换到: ' + path, '#3fb950');
-  } catch(e) {
-    showMsg('wd-msg', '切换失败: ' + e.message, '#f85149');
   }
 }
 

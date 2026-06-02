@@ -58,7 +58,6 @@ func main() {
 
 	go func() {
 		log.Printf("[server] listening on %s", server.Addr)
-		log.Printf("[server] current_work_dir=%s", cfg.CurrentWorkDir)
 		log.Printf("[server] work_dirs=%v", cfg.WorkDirs)
 		log.Printf("[server] auto_commit=%v interval=%s", cfg.GitAutoCommit, cfg.CommitInterval)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {

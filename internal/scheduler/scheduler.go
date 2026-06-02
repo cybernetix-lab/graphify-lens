@@ -12,15 +12,17 @@ import (
 )
 
 type Scheduler struct {
-	cfg        *config.Config
-	gitMgr     *git.Manager
-	ticker     *time.Ticker
-	stopCh     chan struct{}
-	lastResult *CycleResult
+	cfg    *config.Config
+	ticker *time.Ticker
+	stopCh chan struct{}
+
 	mu         sync.RWMutex
+	gitMgrs    map[string]*git.Manager
+	results    map[string]*CycleResult
 }
 
 type CycleResult struct {
+	WorkDir    string              `json:"work_dir"`
 	Time       time.Time           `json:"time"`
 	Commit     *git.CommitResult   `json:"commit"`
 	Assessment *quality.Assessment `json:"assessment"`
@@ -29,9 +31,14 @@ type CycleResult struct {
 
 func New(cfg *config.Config) (*Scheduler, error) {
 	s := &Scheduler{
-		cfg:    cfg,
-		gitMgr: git.NewManager(cfg.CurrentWorkDir, cfg.AuthorName, cfg.AuthorEmail),
-		stopCh: make(chan struct{}),
+		cfg:     cfg,
+		stopCh:  make(chan struct{}),
+		gitMgrs: make(map[string]*git.Manager),
+		results: make(map[string]*CycleResult),
+	}
+
+	for _, wd := range cfg.WorkDirs {
+		s.gitMgrs[wd] = git.NewManager(wd, cfg.AuthorName, cfg.AuthorEmail)
 	}
 
 	return s, nil
@@ -43,17 +50,18 @@ func (s *Scheduler) Start() {
 	}
 
 	s.ticker = time.NewTicker(s.cfg.CommitInterval)
-	log.Printf("[scheduler] auto-commit started, interval=%s", s.cfg.CommitInterval)
+	log.Printf("[scheduler] auto-commit started for %d work dirs, interval=%s",
+		len(s.cfg.WorkDirs), s.cfg.CommitInterval)
 
 	go s.runLoop()
 }
 
 func (s *Scheduler) runLoop() {
-	s.runCycle()
+	s.runAllCycles()
 	for {
 		select {
 		case <-s.ticker.C:
-			s.runCycle()
+			s.runAllCycles()
 		case <-s.stopCh:
 			if s.ticker != nil {
 				s.ticker.Stop()
@@ -69,56 +77,91 @@ func (s *Scheduler) Stop() {
 	}
 }
 
-func (s *Scheduler) RunNow() *CycleResult {
-	return s.runCycle()
+func (s *Scheduler) RunNow() map[string]*CycleResult {
+	return s.runAllCycles()
 }
 
-func (s *Scheduler) runCycle() *CycleResult {
-	result := &CycleResult{Time: time.Now()}
-
+func (s *Scheduler) runAllCycles() map[string]*CycleResult {
 	s.mu.RLock()
-	workDir := s.cfg.CurrentWorkDir
+	workDirs := make([]string, len(s.cfg.WorkDirs))
+	copy(workDirs, s.cfg.WorkDirs)
 	qualityHistory := s.cfg.QualityHistory
 	commitMessage := s.cfg.CommitMessage
-	gitMgr := s.gitMgr
 	s.mu.RUnlock()
 
+	results := make(map[string]*CycleResult)
+
+	for _, wd := range workDirs {
+		result := s.runCycle(wd, qualityHistory, commitMessage)
+		results[wd] = result
+
+		s.mu.Lock()
+		s.results[wd] = result
+		s.mu.Unlock()
+	}
+
+	return results
+}
+
+func (s *Scheduler) runCycle(workDir, qualityHistory, commitMessage string) *CycleResult {
+	result := &CycleResult{
+		WorkDir: workDir,
+		Time:    time.Now(),
+	}
+
 	if workDir == "" {
-		log.Printf("[scheduler] no current work dir set, skipping cycle")
+		log.Printf("[scheduler] empty work dir, skipping")
 		return result
 	}
 
 	g, err := graph.ParseGraphifyOut(workDir)
 	if err != nil {
-		log.Printf("[scheduler] graph parse error: %v", err)
+		log.Printf("[scheduler] graph parse error [%s]: %v", workDir, err)
 		return result
 	}
 
 	stats := g.Stats()
 	result.GraphStats = &stats
 
-	assessment, err := quality.Assess(g, qualityHistory)
+	snapshot, err := graph.GenerateSnapshot(workDir)
 	if err != nil {
-		log.Printf("[scheduler] quality assess error: %v", err)
+		log.Printf("[scheduler] snapshot generation error [%s]: %v", workDir, err)
 	} else {
-		result.Assessment = assessment
-		if err := quality.SaveAssessment(assessment, qualityHistory); err != nil {
-			log.Printf("[scheduler] save assessment error: %v", err)
+		if err := graph.SaveSnapshot(snapshot, workDir); err != nil {
+			log.Printf("[scheduler] snapshot save error [%s]: %v", workDir, err)
 		}
 	}
 
-	commitResult, err := gitMgr.AutoCommit(commitMessage)
+	assessment, err := quality.Assess(g, qualityHistory)
 	if err != nil {
-		log.Printf("[scheduler] auto commit error: %v", err)
+		log.Printf("[scheduler] quality assess error [%s]: %v", workDir, err)
+	} else {
+		result.Assessment = assessment
+		if err := quality.SaveAssessment(assessment, qualityHistory); err != nil {
+			log.Printf("[scheduler] save assessment error [%s]: %v", workDir, err)
+		}
 	}
-	result.Commit = commitResult
 
-	s.mu.Lock()
-	s.lastResult = result
-	s.mu.Unlock()
+	s.mu.RLock()
+	gitMgr := s.gitMgrs[workDir]
+	s.mu.RUnlock()
 
-	log.Printf("[scheduler] cycle complete: committed=%v, score=%.2f",
-		commitResult.Committed,
+	if gitMgr != nil {
+		commitResult, err := gitMgr.AutoCommit(commitMessage)
+		if err != nil {
+			log.Printf("[scheduler] auto commit error [%s]: %v", workDir, err)
+		}
+		result.Commit = commitResult
+	}
+
+	log.Printf("[scheduler] cycle complete [%s]: committed=%v, score=%.2f",
+		workDir,
+		func() bool {
+			if result.Commit != nil {
+				return result.Commit.Committed
+			}
+			return false
+		}(),
 		func() float64 {
 			if assessment != nil {
 				return assessment.TotalScore
@@ -130,10 +173,20 @@ func (s *Scheduler) runCycle() *CycleResult {
 	return result
 }
 
-func (s *Scheduler) LastResult() *CycleResult {
+func (s *Scheduler) LastResult(workDir string) *CycleResult {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.lastResult
+	return s.results[workDir]
+}
+
+func (s *Scheduler) AllResults() map[string]*CycleResult {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make(map[string]*CycleResult, len(s.results))
+	for k, v := range s.results {
+		out[k] = v
+	}
+	return out
 }
 
 func (s *Scheduler) GetStatus() map[string]interface{} {
@@ -143,20 +196,27 @@ func (s *Scheduler) GetStatus() map[string]interface{} {
 	status := map[string]interface{}{
 		"auto_commit_enabled": s.cfg.GitAutoCommit,
 		"commit_interval":     s.cfg.CommitInterval.String(),
-		"current_work_dir":    s.cfg.CurrentWorkDir,
 		"work_dirs":           s.cfg.WorkDirs,
 		"cron_running":        s.ticker != nil,
 	}
 
-	if s.lastResult != nil {
-		status["last_cycle"] = s.lastResult.Time.Format(time.RFC3339)
-		if s.lastResult.Assessment != nil {
-			status["last_score"] = s.lastResult.Assessment.TotalScore
+	dirStatuses := make([]map[string]interface{}, 0, len(s.cfg.WorkDirs))
+	for _, wd := range s.cfg.WorkDirs {
+		ds := map[string]interface{}{
+			"work_dir": wd,
 		}
-		if s.lastResult.Commit != nil {
-			status["last_commit"] = s.lastResult.Commit.Committed
+		if r, ok := s.results[wd]; ok {
+			ds["last_cycle"] = r.Time.Format(time.RFC3339)
+			if r.Assessment != nil {
+				ds["last_score"] = r.Assessment.TotalScore
+			}
+			if r.Commit != nil {
+				ds["last_commit"] = r.Commit.Committed
+			}
 		}
+		dirStatuses = append(dirStatuses, ds)
 	}
+	status["dir_statuses"] = dirStatuses
 
 	return status
 }
@@ -165,12 +225,28 @@ func (s *Scheduler) UpdateConfig(cfg *config.Config) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	oldWorkDir := s.cfg.CurrentWorkDir
+	oldDirs := make(map[string]bool)
+	for _, d := range s.cfg.WorkDirs {
+		oldDirs[d] = true
+	}
+
 	s.cfg = cfg
 
-	if cfg.CurrentWorkDir != oldWorkDir {
-		s.gitMgr = git.NewManager(cfg.CurrentWorkDir, cfg.AuthorName, cfg.AuthorEmail)
-		log.Printf("[scheduler] current_work_dir updated: %s -> %s", oldWorkDir, cfg.CurrentWorkDir)
+	newGitMgrs := make(map[string]*git.Manager)
+	for _, wd := range cfg.WorkDirs {
+		if mgr, ok := s.gitMgrs[wd]; ok {
+			newGitMgrs[wd] = mgr
+		} else {
+			newGitMgrs[wd] = git.NewManager(wd, cfg.AuthorName, cfg.AuthorEmail)
+			log.Printf("[scheduler] new work dir registered: %s", wd)
+		}
+	}
+	s.gitMgrs = newGitMgrs
+
+	for _, wd := range cfg.WorkDirs {
+		if !oldDirs[wd] {
+			log.Printf("[scheduler] work dir added: %s", wd)
+		}
 	}
 
 	if s.ticker != nil {

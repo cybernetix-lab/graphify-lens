@@ -1,0 +1,82 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-06-02T15:03:18.858794+08:00",
+  "checksum": "1b57bcbc73b50761896d97abea63f2af54ed61baba267eb85312ed9d4b97f91f",
+  "summary": {
+    "total_nodes": 8,
+    "total_edges": 10,
+    "file_types": {
+      "code": 3,
+      "document": 2,
+      "image": 1,
+      "paper": 2
+    }
+  },
+  "topology": {
+    "avg_degree": 2.5,
+    "max_degree": 4,
+    "connected_components": 1,
+    "isolated_nodes": 0
+  },
+  "top_nodes": [
+    {
+      "id": "code_transformer_layer",
+      "label": "TransformerLayer",
+      "file_type": "code",
+      "degree": 4
+    },
+    {
+      "id": "concept_transformer_architecture",
+      "label": "Transformer Architecture",
+      "file_type": "paper",
+      "degree": 3
+    },
+    {
+      "id": "doc_training_pipeline",
+      "label": "Training Pipeline Overview",
+      "file_type": "document",
+      "degree": 3
+    },
+    {
+      "id": "concept_attention_mechanism",
+      "label": "Attention Mechanism",
+      "file_type": "paper",
+      "degree": 2
+    },
+    {
+      "id": "code_multihead_attention",
+      "label": "MultiHeadAttention",
+      "file_type": "code",
+      "degree": 2
+    },
+    {
+      "id": "doc_data_preprocessing",
+      "label": "Data Preprocessing",
+      "file_type": "document",
+      "degree": 2
+    },
+    {
+      "id": "code_data_loader",
+      "label": "DataLoader",
+      "file_type": "code",
+      "degree": 2
+    },
+    {
+      "id": "image_model_architecture_diagram",
+      "label": "Model Architecture Diagram",
+      "file_type": "image",
+      "degree": 2
+    }
+  ],
+  "edge_stats": {
+    "relation_breakdown": {
+      "calls": 1,
+      "conceptually_related_to": 2,
+      "depicts": 2,
+      "implements": 2,
+      "is_foundation_of": 1,
+      "references": 2
+    },
+    "avg_confidence": 0.82
+  }
+}

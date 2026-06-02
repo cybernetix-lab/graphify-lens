@@ -5,7 +5,6 @@ import (
 	"log"
 	"net/http"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/cybernetix-lab/graphify-lens/internal/config"
@@ -18,9 +17,6 @@ type Handler struct {
 	scheduler  *scheduler.Scheduler
 	cfg        *config.Config
 	configPath string
-	workDir    string
-	qualityDir string
-	mu         sync.RWMutex
 }
 
 func NewHandler(s *scheduler.Scheduler, cfg *config.Config, configPath string) *Handler {
@@ -28,8 +24,6 @@ func NewHandler(s *scheduler.Scheduler, cfg *config.Config, configPath string) *
 		scheduler:  s,
 		cfg:        cfg,
 		configPath: configPath,
-		workDir:    cfg.CurrentWorkDir,
-		qualityDir: cfg.QualityHistory,
 	}
 }
 
@@ -45,23 +39,20 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/api/commits", h.handleCommits)
 	mux.HandleFunc("/api/config", h.handleConfig)
 	mux.HandleFunc("/api/config/workdirs", h.handleWorkDirs)
-	mux.HandleFunc("/api/config/switch", h.handleSwitchWorkDir)
 }
 
-func (h *Handler) getWorkDir() string {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-	return h.workDir
-}
-
-func (h *Handler) getQualityDir() string {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-	return h.qualityDir
+func (h *Handler) resolveWorkDir(r *http.Request) string {
+	if wd := r.URL.Query().Get("work_dir"); wd != "" {
+		return config.ExpandPath(wd)
+	}
+	if len(h.cfg.WorkDirs) > 0 {
+		return h.cfg.WorkDirs[0]
+	}
+	return ""
 }
 
 func (h *Handler) handleGraph(w http.ResponseWriter, r *http.Request) {
-	workDir := h.getWorkDir()
+	workDir := h.resolveWorkDir(r)
 	summary, err := graph.ParseGraphifyOutSummary(workDir)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -88,7 +79,7 @@ func (h *Handler) handleGraph(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleGraphSummary(w http.ResponseWriter, r *http.Request) {
-	summary, err := graph.ParseGraphifyOutSummary(h.getWorkDir())
+	summary, err := graph.ParseGraphifyOutSummary(h.resolveWorkDir(r))
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
@@ -114,7 +105,7 @@ func (h *Handler) handleGraphQuery(w http.ResponseWriter, r *http.Request) {
 		Offset:   offset,
 	}
 
-	result, err := graph.ParseGraphifyOutQuery(h.getWorkDir(), gq)
+	result, err := graph.ParseGraphifyOutQuery(h.resolveWorkDir(r), gq)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
@@ -123,7 +114,7 @@ func (h *Handler) handleGraphQuery(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleStats(w http.ResponseWriter, r *http.Request) {
-	g, err := graph.ParseGraphifyOut(h.getWorkDir())
+	g, err := graph.ParseGraphifyOut(h.resolveWorkDir(r))
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
@@ -133,18 +124,20 @@ func (h *Handler) handleStats(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleQualityCurrent(w http.ResponseWriter, r *http.Request) {
-	result := h.scheduler.LastResult()
+	workDir := h.resolveWorkDir(r)
+
+	result := h.scheduler.LastResult(workDir)
 	if result != nil && result.Assessment != nil {
 		writeJSON(w, http.StatusOK, result.Assessment)
 		return
 	}
 
-	g, err := graph.ParseGraphifyOut(h.getWorkDir())
+	g, err := graph.ParseGraphifyOut(workDir)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-	a, err := quality.Assess(g, h.getQualityDir())
+	a, err := quality.Assess(g, h.cfg.QualityHistory)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
@@ -153,7 +146,7 @@ func (h *Handler) handleQualityCurrent(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleQualityHistory(w http.ResponseWriter, r *http.Request) {
-	history, err := quality.LoadHistory(h.getQualityDir())
+	history, err := quality.LoadHistory(h.cfg.QualityHistory)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
@@ -174,39 +167,35 @@ func (h *Handler) handleRunCycle(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "POST required"})
 		return
 	}
-	result := h.scheduler.RunNow()
-	writeJSON(w, http.StatusOK, result)
+	results := h.scheduler.RunNow()
+	writeJSON(w, http.StatusOK, results)
 }
 
 func (h *Handler) handleCommits(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"last_cycle": h.scheduler.LastResult(),
+		"results": h.scheduler.AllResults(),
 	})
 }
 
 func (h *Handler) handleConfig(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		h.mu.RLock()
 		resp := map[string]interface{}{
-			"work_dirs":        h.cfg.WorkDirs,
-			"current_work_dir": h.cfg.CurrentWorkDir,
-			"port":             h.cfg.Port,
-			"git_auto_commit":  h.cfg.GitAutoCommit,
-			"commit_interval":  h.cfg.CommitInterval.String(),
-			"commit_message":   h.cfg.CommitMessage,
-			"quality_history":  h.qualityDir,
-			"data_dir":         h.cfg.DataDir,
-			"author_name":      h.cfg.AuthorName,
-			"author_email":     h.cfg.AuthorEmail,
+			"work_dirs":       h.cfg.WorkDirs,
+			"port":            h.cfg.Port,
+			"git_auto_commit": h.cfg.GitAutoCommit,
+			"commit_interval": h.cfg.CommitInterval.String(),
+			"commit_message":  h.cfg.CommitMessage,
+			"quality_history": h.cfg.QualityHistory,
+			"data_dir":        h.cfg.DataDir,
+			"author_name":     h.cfg.AuthorName,
+			"author_email":    h.cfg.AuthorEmail,
 		}
-		h.mu.RUnlock()
 		writeJSON(w, http.StatusOK, resp)
 
 	case http.MethodPost:
 		var req struct {
 			WorkDirs       []string `json:"work_dirs"`
-			CurrentWorkDir string   `json:"current_work_dir"`
 			Port           int      `json:"port"`
 			GitAutoCommit  *bool    `json:"git_auto_commit"`
 			CommitInterval string   `json:"commit_interval"`
@@ -221,13 +210,12 @@ func (h *Handler) handleConfig(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		h.mu.Lock()
 		if req.WorkDirs != nil {
-			h.cfg.WorkDirs = req.WorkDirs
-		}
-		if req.CurrentWorkDir != "" {
-			h.workDir = req.CurrentWorkDir
-			h.cfg.CurrentWorkDir = req.CurrentWorkDir
+			expanded := make([]string, len(req.WorkDirs))
+			for i, d := range req.WorkDirs {
+				expanded[i] = config.ExpandPath(d)
+			}
+			h.cfg.WorkDirs = expanded
 		}
 		if req.Port > 0 {
 			h.cfg.Port = req.Port
@@ -244,11 +232,10 @@ func (h *Handler) handleConfig(w http.ResponseWriter, r *http.Request) {
 			h.cfg.CommitMessage = req.CommitMessage
 		}
 		if req.QualityHistory != "" {
-			h.qualityDir = req.QualityHistory
-			h.cfg.QualityHistory = req.QualityHistory
+			h.cfg.QualityHistory = config.ExpandPath(req.QualityHistory)
 		}
 		if req.DataDir != "" {
-			h.cfg.DataDir = req.DataDir
+			h.cfg.DataDir = config.ExpandPath(req.DataDir)
 		}
 		if req.AuthorName != "" {
 			h.cfg.AuthorName = req.AuthorName
@@ -256,15 +243,9 @@ func (h *Handler) handleConfig(w http.ResponseWriter, r *http.Request) {
 		if req.AuthorEmail != "" {
 			h.cfg.AuthorEmail = req.AuthorEmail
 		}
-		h.mu.Unlock()
 
 		h.scheduler.UpdateConfig(h.cfg)
-
-		if h.configPath != "" {
-			if err := h.cfg.Save(h.configPath); err != nil {
-				log.Printf("[api] save config error: %v", err)
-			}
-		}
+		h.saveConfig()
 
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 
@@ -276,13 +257,9 @@ func (h *Handler) handleConfig(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) handleWorkDirs(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		h.mu.RLock()
-		resp := map[string]interface{}{
-			"work_dirs":        h.cfg.WorkDirs,
-			"current_work_dir": h.cfg.CurrentWorkDir,
-		}
-		h.mu.RUnlock()
-		writeJSON(w, http.StatusOK, resp)
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"work_dirs": h.cfg.WorkDirs,
+		})
 
 	case http.MethodPost:
 		var req struct {
@@ -297,28 +274,22 @@ func (h *Handler) handleWorkDirs(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		h.mu.Lock()
+		expanded := config.ExpandPath(req.Path)
+
 		for _, d := range h.cfg.WorkDirs {
-			if d == req.Path {
-				h.mu.Unlock()
+			if d == expanded {
 				writeJSON(w, http.StatusConflict, map[string]string{"error": "path already exists"})
 				return
 			}
 		}
-		h.cfg.WorkDirs = append(h.cfg.WorkDirs, req.Path)
-		if h.cfg.CurrentWorkDir == "" {
-			h.cfg.CurrentWorkDir = req.Path
-			h.workDir = req.Path
-		}
-		h.mu.Unlock()
+		h.cfg.WorkDirs = append(h.cfg.WorkDirs, expanded)
 
 		h.scheduler.UpdateConfig(h.cfg)
 		h.saveConfig()
 
 		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"status":           "ok",
-			"work_dirs":        h.cfg.WorkDirs,
-			"current_work_dir": h.cfg.CurrentWorkDir,
+			"status":    "ok",
+			"work_dirs": h.cfg.WorkDirs,
 		})
 
 	case http.MethodDelete:
@@ -328,81 +299,27 @@ func (h *Handler) handleWorkDirs(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		h.mu.Lock()
+		expanded := config.ExpandPath(path)
+
 		var newDirs []string
 		for _, d := range h.cfg.WorkDirs {
-			if d != path {
+			if d != expanded {
 				newDirs = append(newDirs, d)
 			}
 		}
 		h.cfg.WorkDirs = newDirs
-		if h.cfg.CurrentWorkDir == path {
-			if len(newDirs) > 0 {
-				h.cfg.CurrentWorkDir = newDirs[0]
-				h.workDir = newDirs[0]
-			} else {
-				h.cfg.CurrentWorkDir = ""
-				h.workDir = ""
-			}
-		}
-		h.mu.Unlock()
 
 		h.scheduler.UpdateConfig(h.cfg)
 		h.saveConfig()
 
 		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"status":           "ok",
-			"work_dirs":        h.cfg.WorkDirs,
-			"current_work_dir": h.cfg.CurrentWorkDir,
+			"status":    "ok",
+			"work_dirs": h.cfg.WorkDirs,
 		})
 
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "GET, POST or DELETE required"})
 	}
-}
-
-func (h *Handler) handleSwitchWorkDir(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "POST required"})
-		return
-	}
-
-	var req struct {
-		Path string `json:"path"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-		return
-	}
-	if req.Path == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "path is required"})
-		return
-	}
-
-	found := false
-	for _, d := range h.cfg.WorkDirs {
-		if d == req.Path {
-			found = true
-			break
-		}
-	}
-	if !found {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "path not in work_dirs"})
-		return
-	}
-
-	h.mu.Lock()
-	h.workDir = req.Path
-	h.cfg.CurrentWorkDir = req.Path
-	h.mu.Unlock()
-
-	h.scheduler.UpdateConfig(h.cfg)
-	h.saveConfig()
-
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"status":           "ok",
-		"current_work_dir": req.Path,
-	})
 }
 
 func (h *Handler) saveConfig() {
