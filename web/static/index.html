@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Graphify Lens - 知识库管理</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f1117; color: #e1e4e8; }
+.header { background: #161b22; border-bottom: 1px solid #30363d; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; }
+.header h1 { font-size: 18px; font-weight: 600; color: #58a6ff; }
+.header .status { display: flex; gap: 16px; align-items: center; font-size: 13px; }
+.header .status .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+.header .status .dot.green { background: #3fb950; }
+.header .status .dot.red { background: #f85149; }
+.header .status .dot.yellow { background: #d29922; }
+.tabs { display: flex; gap: 0; background: #161b22; border-bottom: 1px solid #30363d; padding: 0 24px; }
+.tab { padding: 10px 20px; cursor: pointer; font-size: 14px; color: #8b949e; border-bottom: 2px solid transparent; transition: all 0.2s; }
+.tab:hover { color: #e1e4e8; }
+.tab.active { color: #58a6ff; border-bottom-color: #58a6ff; }
+.content { padding: 24px; }
+.panel { display: none; }
+.panel.active { display: block; }
+
+#graph-container { width: 100%; height: calc(100vh - 160px); border: 1px solid #30363d; border-radius: 8px; background: #0d1117; overflow: hidden; position: relative; }
+#graph-container svg { width: 100%; height: 100%; }
+.node circle { stroke-width: 2px; cursor: pointer; }
+.node text { font-size: 11px; fill: #c9d1d9; pointer-events: none; }
+.link { stroke: #30363d; stroke-opacity: 0.6; }
+.link-label { font-size: 9px; fill: #8b949e; }
+.tooltip { position: absolute; background: #21262d; border: 1px solid #30363d; border-radius: 6px; padding: 12px; font-size: 12px; pointer-events: none; max-width: 280px; z-index: 100; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+.tooltip .tt-title { font-weight: 600; color: #58a6ff; margin-bottom: 4px; }
+.tooltip .tt-row { display: flex; justify-content: space-between; margin: 2px 0; }
+.tooltip .tt-label { color: #8b949e; }
+.tooltip .tt-value { color: #e1e4e8; }
+
+.dashboard { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+.card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px; }
+.card h3 { font-size: 14px; color: #8b949e; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+.card .big-number { font-size: 48px; font-weight: 700; color: #58a6ff; }
+.card .subtitle { font-size: 13px; color: #8b949e; margin-top: 4px; }
+.metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.metric-item { background: #0d1117; border-radius: 6px; padding: 10px; }
+.metric-item .metric-label { font-size: 11px; color: #8b949e; }
+.metric-item .metric-value { font-size: 20px; font-weight: 600; color: #e1e4e8; }
+.metric-item .metric-sub { font-size: 11px; color: #8b949e; margin-top: 2px; }
+
+.chart-container { width: 100%; height: 300px; position: relative; }
+.chart-container.large { height: 400px; }
+
+.settings { max-width: 600px; }
+.form-group { margin-bottom: 16px; }
+.form-group label { display: block; font-size: 13px; color: #8b949e; margin-bottom: 6px; }
+.form-group input, .form-group select { width: 100%; padding: 8px 12px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #e1e4e8; font-size: 14px; }
+.form-group input:focus { outline: none; border-color: #58a6ff; }
+.btn { padding: 8px 16px; border: 1px solid #30363d; border-radius: 6px; cursor: pointer; font-size: 14px; transition: all 0.2s; }
+.btn-primary { background: #238636; color: #fff; border-color: #238636; }
+.btn-primary:hover { background: #2ea043; }
+.btn-secondary { background: #21262d; color: #e1e4e8; }
+.btn-secondary:hover { background: #30363d; }
+.btn-danger { background: #da3633; color: #fff; border-color: #da3633; }
+.btn-group { display: flex; gap: 8px; margin-top: 16px; }
+
+.commit-list { max-height: 300px; overflow-y: auto; }
+.commit-item { padding: 8px 0; border-bottom: 1px solid #21262d; font-size: 13px; }
+.commit-item .commit-hash { color: #58a6ff; font-family: monospace; }
+.commit-item .commit-msg { color: #e1e4e8; }
+.commit-item .commit-time { color: #8b949e; font-size: 12px; }
+
+.legend { display: flex; gap: 16px; padding: 8px 0; flex-wrap: wrap; }
+.legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #8b949e; }
+.legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+
+.empty-state { text-align: center; padding: 60px 20px; color: #8b949e; }
+.empty-state .icon { font-size: 48px; margin-bottom: 16px; }
+.empty-state p { font-size: 14px; }
+
+.loading { display: flex; align-items: center; justify-content: center; height: 200px; }
+.spinner { width: 32px; height: 32px; border: 3px solid #30363d; border-top-color: #58a6ff; border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>🧠 Graphify Lens - 知识库管理</h1>
+  <div class="status">
+    <span id="status-dot"><span class="dot green"></span> 运行中</span>
+    <span id="status-score">质量分: --</span>
+    <span id="status-commit">自动提交: --</span>
+  </div>
+</div>
+<div class="tabs">
+  <div class="tab active" data-tab="graph">知识图谱</div>
+  <div class="tab" data-tab="dashboard">质量仪表盘</div>
+  <div class="tab" data-tab="history">历史趋势</div>
+  <div class="tab" data-tab="settings">设置</div>
+</div>
+<div class="content">
+  <div id="panel-graph" class="panel active">
+    <div class="legend">
+      <div class="legend-item"><span class="legend-dot" style="background:#58a6ff"></span>概念</div>
+      <div class="legend-item"><span class="legend-dot" style="background:#3fb950"></span>主题</div>
+      <div class="legend-item"><span class="legend-dot" style="background:#d29922"></span>Runbook</div>
+      <div class="legend-item"><span class="legend-dot" style="background:#f85149"></span>决策</div>
+      <div class="legend-item"><span class="legend-dot" style="background:#bc8cff"></span>案例</div>
+      <div class="legend-item"><span class="legend-dot" style="background:#79c0ff"></span>FAQ</div>
+      <div class="legend-item"><span class="legend-dot" style="background:#7ee787"></span>文章</div>
+    </div>
+    <div id="graph-container"></div>
+    <div id="graph-tooltip" class="tooltip" style="display:none"></div>
+  </div>
+  <div id="panel-dashboard" class="panel">
+    <div class="dashboard" id="dashboard-content">
+      <div class="loading"><div class="spinner"></div></div>
+    </div>
+  </div>
+  <div id="panel-history" class="panel">
+    <div class="card">
+      <h3>质量分数趋势</h3>
+      <div class="chart-container large"><canvas id="chart-trend"></canvas></div>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <h3>各维度趋势</h3>
+      <div class="chart-container large"><canvas id="chart-dimensions"></canvas></div>
+    </div>
+  </div>
+  <div id="panel-settings" class="panel">
+    <div class="settings">
+      <div class="card">
+        <h3>配置</h3>
+        <div class="form-group">
+          <label>工作目录</label>
+          <input type="text" id="cfg-workdir" placeholder="~/.graphify-lens/data">
+        </div>
+        <div class="form-group">
+          <label>端口</label>
+          <input type="number" id="cfg-port" value="8080">
+        </div>
+        <div class="form-group">
+          <label>自动提交间隔（如 30m, 1h）</label>
+          <input type="text" id="cfg-interval" value="30m">
+        </div>
+        <div class="form-group">
+          <label>提交信息模板</label>
+          <input type="text" id="cfg-message" value="auto: graphify-lens knowledge base snapshot">
+        </div>
+        <div class="btn-group">
+          <button class="btn btn-primary" onclick="runCycle()">立即执行周期</button>
+          <button class="btn btn-secondary" onclick="refreshAll()">刷新</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+const API = '/api';
+const COLORS = {
+  concept: '#58a6ff', topic: '#3fb950', runbook: '#d29922',
+  decision: '#f85149', case: '#bc8cff', faq: '#79c0ff',
+  article: '#7ee787', source: '#8b949e', unknown: '#484f58'
+};
+
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
+    if (tab.dataset.tab === 'graph') renderGraph();
+    if (tab.dataset.tab === 'dashboard') renderDashboard();
+    if (tab.dataset.tab === 'history') renderHistory();
+  });
+});
+
+async function fetchJSON(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(res.statusText);
+  return res.json();
+}
+
+async function refreshAll() {
+  try {
+    const status = await fetchJSON(API + '/status');
+    document.getElementById('status-score').textContent = '质量分: ' + (status.last_score != null ? status.last_score.toFixed(1) : '--');
+    document.getElementById('status-commit').textContent = '自动提交: ' + (status.auto_commit_enabled ? '开启' : '关闭');
+  } catch(e) { console.error(e); }
+}
+
+async function runCycle() {
+  try {
+    const res = await fetch(API + '/cycle/run', { method: 'POST' });
+    const data = await res.json();
+    alert('周期执行完成！质量分: ' + (data.assessment ? data.assessment.total_score.toFixed(1) : 'N/A'));
+    refreshAll();
+  } catch(e) { alert('执行失败: ' + e.message); }
+}
+
+let graphSimulation = null;
+
+async function renderGraph() {
+  const container = document.getElementById('graph-container');
+  try {
+    const data = await fetchJSON(API + '/graph');
+    if (!data.nodes || data.nodes.length === 0) {
+      container.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>暂无知识图谱数据</p><p style="font-size:12px;margin-top:8px">请在 ' + (await getWorkDir()) + '/nodes/ 下添加 JSON 节点文件</p></div>';
+      return;
+    }
+
+    const width = container.clientWidth;
+    const height = container.clientHeight;
+
+    container.innerHTML = '';
+    const svg = d3.select('#graph-container').append('svg')
+      .attr('viewBox', [0, 0, width, height]);
+
+    const g = svg.append('g');
+
+    const zoom = d3.zoom().scaleExtent([0.1, 4]).on('zoom', (event) => {
+      g.attr('transform', event.transform);
+    });
+    svg.call(zoom);
+
+    const nodes = data.nodes.map(n => ({ ...n, id: n.id }));
+    const links = data.edges.map(e => ({ ...e, source: e.source, target: e.target }));
+
+    const simulation = d3.forceSimulation(nodes)
+      .force('link', d3.forceLink(links).id(d => d.id).distance(100))
+      .force('charge', d3.forceManyBody().strength(-300))
+      .force('center', d3.forceCenter(width / 2, height / 2))
+      .force('collision', d3.forceCollide().radius(30));
+
+    const link = g.append('g').selectAll('line')
+      .data(links).join('line')
+      .attr('class', 'link')
+      .attr('stroke-width', d => Math.max(1, d.confidence * 3));
+
+    const linkLabel = g.append('g').selectAll('text')
+      .data(links).join('text')
+      .attr('class', 'link-label')
+      .text(d => d.relation || d.label || '');
+
+    const node = g.append('g').selectAll('g')
+      .data(nodes).join('g')
+      .attr('class', 'node')
+      .call(d3.drag()
+        .on('start', (event, d) => { if (!event.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+        .on('drag', (event, d) => { d.fx = event.x; d.fy = event.y; })
+        .on('end', (event, d) => { if (!event.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; })
+      );
+
+    node.append('circle')
+      .attr('r', d => Math.max(8, Math.min(20, 8 + (d.source_refs ? d.source_refs.length * 2 : 0))))
+      .attr('fill', d => COLORS[d.type] || COLORS.unknown)
+      .attr('stroke', d => d3.color(COLORS[d.type] || COLORS.unknown).darker(0.5));
+
+    node.append('text')
+      .attr('dy', d => -Math.max(10, Math.min(22, 10 + (d.source_refs ? d.source_refs.length * 2 : 0))))
+      .attr('text-anchor', 'middle')
+      .text(d => d.title || d.id);
+
+    const tooltip = document.getElementById('graph-tooltip');
+
+    node.on('mouseover', (event, d) => {
+      tooltip.style.display = 'block';
+      tooltip.innerHTML = `
+        <div class="tt-title">${d.title || d.id}</div>
+        <div class="tt-row"><span class="tt-label">类型</span><span class="tt-value">${d.type || 'unknown'}</span></div>
+        <div class="tt-row"><span class="tt-label">Owner</span><span class="tt-value">${d.owner || '未设置'}</span></div>
+        <div class="tt-row"><span class="tt-label">状态</span><span class="tt-value">${d.status || 'unknown'}</span></div>
+        <div class="tt-row"><span class="tt-label">密级</span><span class="tt-value">${d.classification || '未设置'}</span></div>
+        <div class="tt-row"><span class="tt-label">来源引用</span><span class="tt-value">${(d.source_refs || []).length} 个</span></div>
+      `;
+    }).on('mousemove', (event) => {
+      tooltip.style.left = (event.offsetX + 15) + 'px';
+      tooltip.style.top = (event.offsetY - 10) + 'px';
+    }).on('mouseout', () => {
+      tooltip.style.display = 'none';
+    });
+
+    simulation.on('tick', () => {
+      link.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+        .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+      linkLabel.attr('x', d => (d.source.x + d.target.x) / 2)
+        .attr('y', d => (d.source.y + d.target.y) / 2);
+      node.attr('transform', d => `translate(${d.x},${d.y})`);
+    });
+
+    graphSimulation = simulation;
+  } catch(e) {
+    container.innerHTML = '<div class="empty-state"><div class="icon">⚠️</div><p>加载图谱失败: ' + e.message + '</p></div>';
+  }
+}
+
+async function renderDashboard() {
+  const container = document.getElementById('dashboard-content');
+  try {
+    const [quality, stats] = await Promise.all([
+      fetchJSON(API + '/quality/current'),
+      fetchJSON(API + '/stats')
+    ]);
+
+    const scoreColor = quality.total_score >= 80 ? '#3fb950' : quality.total_score >= 60 ? '#d29922' : '#f85149';
+
+    container.innerHTML = `
+      <div class="card" style="grid-column: 1/-1; text-align:center">
+        <h3>知识质量总分</h3>
+        <div class="big-number" style="color:${scoreColor}">${quality.total_score.toFixed(1)}</div>
+        <div class="subtitle">Knowledge Quality Score · ${new Date(quality.timestamp).toLocaleString('zh-CN')}</div>
+      </div>
+      <div class="card">
+        <h3>📊 覆盖度 (30%)</h3>
+        <div class="metric-grid">
+          <div class="metric-item">
+            <div class="metric-label">覆盖度得分</div>
+            <div class="metric-value">${(quality.coverage.score * 100).toFixed(1)}%</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">类型覆盖</div>
+            <div class="metric-value">${(quality.coverage.type_coverage * 100).toFixed(0)}%</div>
+            <div class="metric-sub">${Object.keys(stats.type_breakdown || {}).length}/6 种类型</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">主题覆盖</div>
+            <div class="metric-value">${(quality.coverage.topic_coverage * 100).toFixed(0)}%</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">场景覆盖</div>
+            <div class="metric-value">${(quality.coverage.scenario_coverage * 100).toFixed(0)}%</div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>🎯 准确度 (25%)</h3>
+        <div class="metric-grid">
+          <div class="metric-item">
+            <div class="metric-label">准确度得分</div>
+            <div class="metric-value">${(quality.accuracy.score * 100).toFixed(1)}%</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">有依据边比例</div>
+            <div class="metric-value">${(quality.accuracy.grounded_edge_rate * 100).toFixed(0)}%</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">来源引用覆盖</div>
+            <div class="metric-value">${(quality.accuracy.source_ref_coverage * 100).toFixed(0)}%</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">冲突暴露率</div>
+            <div class="metric-value">${(quality.accuracy.conflict_exposure * 100).toFixed(0)}%</div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>🕐 新鲜度 (20%)</h3>
+        <div class="metric-grid">
+          <div class="metric-item">
+            <div class="metric-label">新鲜度得分</div>
+            <div class="metric-value">${(quality.freshness.score * 100).toFixed(1)}%</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">合规率</div>
+            <div class="metric-value">${(quality.freshness.freshness_compliance * 100).toFixed(0)}%</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">过期页面比例</div>
+            <div class="metric-value">${(quality.freshness.stale_page_ratio * 100).toFixed(0)}%</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">平均距上次审查</div>
+            <div class="metric-value">${quality.freshness.avg_days_since_review.toFixed(0)} 天</div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>🏛️ 治理度 (15%)</h3>
+        <div class="metric-grid">
+          <div class="metric-item">
+            <div class="metric-label">治理度得分</div>
+            <div class="metric-value">${(quality.governance.score * 100).toFixed(1)}%</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">元数据完整度</div>
+            <div class="metric-value">${(quality.governance.metadata_completeness * 100).toFixed(0)}%</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">Owner 覆盖率</div>
+            <div class="metric-value">${(quality.governance.owner_coverage * 100).toFixed(0)}%</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">权限合规率</div>
+            <div class="metric-value">${(quality.governance.permission_compliance * 100).toFixed(0)}%</div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>📈 复用与成长 (10%)</h3>
+        <div class="metric-grid">
+          <div class="metric-item">
+            <div class="metric-label">复用成长得分</div>
+            <div class="metric-value">${(quality.reuse_growth.score * 100).toFixed(1)}%</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">复用率</div>
+            <div class="metric-value">${(quality.reuse_growth.reuse_rate * 100).toFixed(0)}%</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">转化率</div>
+            <div class="metric-value">${(quality.reuse_growth.conversion_rate * 100).toFixed(0)}%</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">知识 ROI</div>
+            <div class="metric-value">${(quality.reuse_growth.knowledge_roi * 100).toFixed(1)}%</div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>📋 知识库概览</h3>
+        <div class="metric-grid">
+          <div class="metric-item">
+            <div class="metric-label">总节点数</div>
+            <div class="metric-value">${stats.total_nodes}</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">总边数</div>
+            <div class="metric-value">${stats.total_edges}</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">活跃页面</div>
+            <div class="metric-value">${stats.status_breakdown?.active || 0}</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">草稿/过期</div>
+            <div class="metric-value">${(stats.status_breakdown?.draft || 0) + (stats.status_breakdown?.deprecated || 0)}</div>
+          </div>
+        </div>
+      </div>
+    `;
+  } catch(e) {
+    container.innerHTML = '<div class="empty-state"><div class="icon">⚠️</div><p>加载仪表盘失败: ' + e.message + '</p></div>';
+  }
+}
+
+let trendChart = null, dimChart = null;
+
+async function renderHistory() {
+  try {
+    const history = await fetchJSON(API + '/quality/history');
+    if (!history || history.length === 0) {
+      document.getElementById('panel-history').innerHTML = '<div class="empty-state"><div class="icon">📊</div><p>暂无历史质量数据</p><p style="font-size:12px;margin-top:8px">执行一次周期即可生成质量评估记录</p></div>';
+      return;
+    }
+
+    history.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    const labels = history.map(h => new Date(h.timestamp).toLocaleDateString('zh-CN'));
+    const scores = history.map(h => h.total_score);
+    const coverage = history.map(h => h.coverage.score * 100);
+    const accuracy = history.map(h => h.accuracy.score * 100);
+    const freshness = history.map(h => h.freshness.score * 100);
+    const governance = history.map(h => h.governance.score * 100);
+    const reuse = history.map(h => h.reuse_growth.score * 100);
+
+    if (trendChart) trendChart.destroy();
+    const ctx1 = document.getElementById('chart-trend').getContext('2d');
+    trendChart = new Chart(ctx1, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          label: '质量总分',
+          data: scores,
+          borderColor: '#58a6ff',
+          backgroundColor: 'rgba(88,166,255,0.1)',
+          fill: true,
+          tension: 0.3,
+          pointRadius: 4,
+          pointBackgroundColor: '#58a6ff'
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { labels: { color: '#8b949e' } } },
+        scales: {
+          x: { ticks: { color: '#8b949e' }, grid: { color: '#21262d' } },
+          y: { min: 0, max: 100, ticks: { color: '#8b949e', callback: v => v.toFixed(1) }, grid: { color: '#21262d' } }
+        }
+      }
+    });
+
+    if (dimChart) dimChart.destroy();
+    const ctx2 = document.getElementById('chart-dimensions').getContext('2d');
+    dimChart = new Chart(ctx2, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          { label: '覆盖度', data: coverage, borderColor: '#3fb950', tension: 0.3, pointRadius: 3 },
+          { label: '准确度', data: accuracy, borderColor: '#58a6ff', tension: 0.3, pointRadius: 3 },
+          { label: '新鲜度', data: freshness, borderColor: '#d29922', tension: 0.3, pointRadius: 3 },
+          { label: '治理度', data: governance, borderColor: '#bc8cff', tension: 0.3, pointRadius: 3 },
+          { label: '复用成长', data: reuse, borderColor: '#f85149', tension: 0.3, pointRadius: 3 }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { labels: { color: '#8b949e' } } },
+        scales: {
+          x: { ticks: { color: '#8b949e' }, grid: { color: '#21262d' } },
+          y: { min: 0, max: 100, ticks: { color: '#8b949e', callback: v => v + '%' }, grid: { color: '#21262d' } }
+        }
+      }
+    });
+  } catch(e) {
+    console.error('History render error:', e);
+  }
+}
+
+async function getWorkDir() {
+  try {
+    const status = await fetchJSON(API + '/status');
+    return status.work_dir || '~/.graphify-lens/data';
+  } catch(e) { return '~/.graphify-lens/data'; }
+}
+
+refreshAll();
+setInterval(refreshAll, 30000);
+</script>
+</body>
+</html>

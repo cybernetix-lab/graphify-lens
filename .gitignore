@@ -1,0 +1,25 @@
+# Binaries
+/graphify-lens
+/build/
+/dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Runtime data (generated at runtime, never committed)
+~/.graphify-lens/
+
+# Test coverage
+*.out
+coverage.html
+
+# Dependencies (go mod manages this)
+vendor/

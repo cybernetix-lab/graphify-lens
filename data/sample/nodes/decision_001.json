@@ -1,0 +1,20 @@
+{
+  "id": "decision_001",
+  "type": "decision",
+  "title": "选择 GraphRAG 作为知识库底层引擎",
+  "owner": "zhangsan",
+  "classification": "L1-团队公开",
+  "visibility_scope": "all_engineers",
+  "status": "active",
+  "last_reviewed_at": "2026-04-01T10:00:00Z",
+  "freshness_sla": "2160h",
+  "source_refs": ["https://example.com/doc/adr-graphrag"],
+  "scenario_tags": ["coding"],
+  "properties": {
+    "decision": "采用 GraphRAG 替代传统向量检索",
+    "context": "传统 RAG 在复杂多跳问题上表现不佳",
+    "tradeoffs": "构建成本增加，但查询质量显著提升"
+  },
+  "created_at": "2026-03-15T00:00:00Z",
+  "updated_at": "2026-04-01T10:00:00Z"
+}

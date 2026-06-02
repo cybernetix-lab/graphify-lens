@@ -1,0 +1,19 @@
+{
+  "id": "faq_001",
+  "type": "faq",
+  "title": "如何为新知识条目设置 Owner？",
+  "owner": "zhangsan",
+  "classification": "L1-团队公开",
+  "visibility_scope": "all_engineers",
+  "status": "active",
+  "last_reviewed_at": "2026-05-25T09:00:00Z",
+  "freshness_sla": "720h",
+  "source_refs": [],
+  "scenario_tags": ["onboarding"],
+  "properties": {
+    "question": "如何为新知识条目设置 Owner？",
+    "answer": "在节点 JSON 中设置 owner 字段，格式为飞书用户名或邮箱"
+  },
+  "created_at": "2026-04-01T00:00:00Z",
+  "updated_at": "2026-05-25T09:00:00Z"
+}
