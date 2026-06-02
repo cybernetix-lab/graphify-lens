@@ -98,13 +98,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 <div class="content">
   <div id="panel-graph" class="panel active">
     <div class="legend">
-      <div class="legend-item"><span class="legend-dot" style="background:#58a6ff"></span>概念</div>
-      <div class="legend-item"><span class="legend-dot" style="background:#3fb950"></span>主题</div>
-      <div class="legend-item"><span class="legend-dot" style="background:#d29922"></span>Runbook</div>
-      <div class="legend-item"><span class="legend-dot" style="background:#f85149"></span>决策</div>
-      <div class="legend-item"><span class="legend-dot" style="background:#bc8cff"></span>案例</div>
-      <div class="legend-item"><span class="legend-dot" style="background:#79c0ff"></span>FAQ</div>
-      <div class="legend-item"><span class="legend-dot" style="background:#7ee787"></span>文章</div>
+      <div class="legend-item"><span class="legend-dot" style="background:#58a6ff"></span>code</div>
+      <div class="legend-item"><span class="legend-dot" style="background:#3fb950"></span>document</div>
+      <div class="legend-item"><span class="legend-dot" style="background:#d29922"></span>paper</div>
+      <div class="legend-item"><span class="legend-dot" style="background:#f85149"></span>image</div>
+      <div class="legend-item"><span class="legend-dot" style="background:#bc8cff"></span>other</div>
     </div>
     <div id="graph-container"></div>
     <div id="graph-tooltip" class="tooltip" style="display:none"></div>
@@ -130,7 +128,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
         <h3>配置</h3>
         <div class="form-group">
           <label>工作目录</label>
-          <input type="text" id="cfg-workdir" placeholder="~/.graphify-lens/data">
+          <input type="text" id="cfg-workdir" placeholder="./data/sample">
         </div>
         <div class="form-group">
           <label>端口</label>
@@ -158,9 +156,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 <script>
 const API = '/api';
 const COLORS = {
-  concept: '#58a6ff', topic: '#3fb950', runbook: '#d29922',
-  decision: '#f85149', case: '#bc8cff', faq: '#79c0ff',
-  article: '#7ee787', source: '#8b949e', unknown: '#484f58'
+  code: '#58a6ff', document: '#3fb950', paper: '#d29922',
+  image: '#f85149', unknown: '#484f58'
 };
 
 document.querySelectorAll('.tab').forEach(tab => {
@@ -205,7 +202,7 @@ async function renderGraph() {
   try {
     const data = await fetchJSON(API + '/graph');
     if (!data.nodes || data.nodes.length === 0) {
-      container.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>暂无知识图谱数据</p><p style="font-size:12px;margin-top:8px">请在 ' + (await getWorkDir()) + '/nodes/ 下添加 JSON 节点文件</p></div>';
+      container.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>暂无知识图谱数据</p><p style="font-size:12px;margin-top:8px">请在 work_dir/graphify-out/ 下生成 graph.json</p></div>';
       return;
     }
 
@@ -235,12 +232,12 @@ async function renderGraph() {
     const link = g.append('g').selectAll('line')
       .data(links).join('line')
       .attr('class', 'link')
-      .attr('stroke-width', d => Math.max(1, d.confidence * 3));
+      .attr('stroke-width', d => Math.max(1, d.confidence_score * 3));
 
     const linkLabel = g.append('g').selectAll('text')
       .data(links).join('text')
       .attr('class', 'link-label')
-      .text(d => d.relation || d.label || '');
+      .text(d => d.relation || '');
 
     const node = g.append('g').selectAll('g')
       .data(nodes).join('g')
@@ -252,26 +249,26 @@ async function renderGraph() {
       );
 
     node.append('circle')
-      .attr('r', d => Math.max(8, Math.min(20, 8 + (d.source_refs ? d.source_refs.length * 2 : 0))))
-      .attr('fill', d => COLORS[d.type] || COLORS.unknown)
-      .attr('stroke', d => d3.color(COLORS[d.type] || COLORS.unknown).darker(0.5));
+      .attr('r', d => Math.max(8, Math.min(20, 8 + (d.source_file ? 3 : 0))))
+      .attr('fill', d => COLORS[d.file_type] || COLORS.unknown)
+      .attr('stroke', d => d3.color(COLORS[d.file_type] || COLORS.unknown).darker(0.5));
 
     node.append('text')
-      .attr('dy', d => -Math.max(10, Math.min(22, 10 + (d.source_refs ? d.source_refs.length * 2 : 0))))
+      .attr('dy', d => -Math.max(10, Math.min(22, 10 + (d.source_file ? 3 : 0))))
       .attr('text-anchor', 'middle')
-      .text(d => d.title || d.id);
+      .text(d => d.label || d.id);
 
     const tooltip = document.getElementById('graph-tooltip');
 
     node.on('mouseover', (event, d) => {
       tooltip.style.display = 'block';
       tooltip.innerHTML = `
-        <div class="tt-title">${d.title || d.id}</div>
-        <div class="tt-row"><span class="tt-label">类型</span><span class="tt-value">${d.type || 'unknown'}</span></div>
-        <div class="tt-row"><span class="tt-label">Owner</span><span class="tt-value">${d.owner || '未设置'}</span></div>
-        <div class="tt-row"><span class="tt-label">状态</span><span class="tt-value">${d.status || 'unknown'}</span></div>
-        <div class="tt-row"><span class="tt-label">密级</span><span class="tt-value">${d.classification || '未设置'}</span></div>
-        <div class="tt-row"><span class="tt-label">来源引用</span><span class="tt-value">${(d.source_refs || []).length} 个</span></div>
+        <div class="tt-title">${d.label || d.id}</div>
+        <div class="tt-row"><span class="tt-label">类型</span><span class="tt-value">${d.file_type || 'unknown'}</span></div>
+        <div class="tt-row"><span class="tt-label">来源</span><span class="tt-value">${d.source_file || '未设置'}</span></div>
+        <div class="tt-row"><span class="tt-label">作者</span><span class="tt-value">${d.author || '未设置'}</span></div>
+        <div class="tt-row"><span class="tt-label">贡献者</span><span class="tt-value">${d.contributor || '未设置'}</span></div>
+        <div class="tt-row"><span class="tt-label">置信度</span><span class="tt-value">${d.confidence || '-'}</span></div>
       `;
     }).on('mousemove', (event) => {
       tooltip.style.left = (event.offsetX + 15) + 'px';
@@ -318,17 +315,16 @@ async function renderDashboard() {
             <div class="metric-value">${(quality.coverage.score * 100).toFixed(1)}%</div>
           </div>
           <div class="metric-item">
-            <div class="metric-label">类型覆盖</div>
-            <div class="metric-value">${(quality.coverage.type_coverage * 100).toFixed(0)}%</div>
-            <div class="metric-sub">${Object.keys(stats.type_breakdown || {}).length}/6 种类型</div>
+            <div class="metric-label">节点数</div>
+            <div class="metric-value">${quality.coverage.node_count}</div>
           </div>
           <div class="metric-item">
-            <div class="metric-label">主题覆盖</div>
-            <div class="metric-value">${(quality.coverage.topic_coverage * 100).toFixed(0)}%</div>
+            <div class="metric-label">边数</div>
+            <div class="metric-value">${quality.coverage.edge_count}</div>
           </div>
           <div class="metric-item">
-            <div class="metric-label">场景覆盖</div>
-            <div class="metric-value">${(quality.coverage.scenario_coverage * 100).toFixed(0)}%</div>
+            <div class="metric-label">文件类型数</div>
+            <div class="metric-value">${quality.coverage.file_type_count}</div>
           </div>
         </div>
       </div>
@@ -340,16 +336,16 @@ async function renderDashboard() {
             <div class="metric-value">${(quality.accuracy.score * 100).toFixed(1)}%</div>
           </div>
           <div class="metric-item">
-            <div class="metric-label">有依据边比例</div>
-            <div class="metric-value">${(quality.accuracy.grounded_edge_rate * 100).toFixed(0)}%</div>
+            <div class="metric-label">EXTRACTED 比例</div>
+            <div class="metric-value">${(quality.accuracy.extracted_rate * 100).toFixed(0)}%</div>
           </div>
           <div class="metric-item">
-            <div class="metric-label">来源引用覆盖</div>
-            <div class="metric-value">${(quality.accuracy.source_ref_coverage * 100).toFixed(0)}%</div>
+            <div class="metric-label">INFERRED 比例</div>
+            <div class="metric-value">${(quality.accuracy.inferred_rate * 100).toFixed(0)}%</div>
           </div>
           <div class="metric-item">
-            <div class="metric-label">冲突暴露率</div>
-            <div class="metric-value">${(quality.accuracy.conflict_exposure * 100).toFixed(0)}%</div>
+            <div class="metric-label">平均置信度</div>
+            <div class="metric-value">${(quality.accuracy.avg_confidence * 100).toFixed(0)}%</div>
           </div>
         </div>
       </div>
@@ -361,16 +357,16 @@ async function renderDashboard() {
             <div class="metric-value">${(quality.freshness.score * 100).toFixed(1)}%</div>
           </div>
           <div class="metric-item">
-            <div class="metric-label">合规率</div>
-            <div class="metric-value">${(quality.freshness.freshness_compliance * 100).toFixed(0)}%</div>
+            <div class="metric-label">有时间戳节点</div>
+            <div class="metric-value">${quality.freshness.nodes_with_timestamp}</div>
           </div>
           <div class="metric-item">
-            <div class="metric-label">过期页面比例</div>
-            <div class="metric-value">${(quality.freshness.stale_page_ratio * 100).toFixed(0)}%</div>
+            <div class="metric-label">过期节点比例</div>
+            <div class="metric-value">${(quality.freshness.stale_node_ratio * 100).toFixed(0)}%</div>
           </div>
           <div class="metric-item">
-            <div class="metric-label">平均距上次审查</div>
-            <div class="metric-value">${quality.freshness.avg_days_since_review.toFixed(0)} 天</div>
+            <div class="metric-label">平均捕获天数</div>
+            <div class="metric-value">${quality.freshness.avg_days_since_capture.toFixed(0)} 天</div>
           </div>
         </div>
       </div>
@@ -382,16 +378,16 @@ async function renderDashboard() {
             <div class="metric-value">${(quality.governance.score * 100).toFixed(1)}%</div>
           </div>
           <div class="metric-item">
-            <div class="metric-label">元数据完整度</div>
-            <div class="metric-value">${(quality.governance.metadata_completeness * 100).toFixed(0)}%</div>
+            <div class="metric-label">Author 覆盖率</div>
+            <div class="metric-value">${(quality.governance.author_coverage * 100).toFixed(0)}%</div>
           </div>
           <div class="metric-item">
-            <div class="metric-label">Owner 覆盖率</div>
-            <div class="metric-value">${(quality.governance.owner_coverage * 100).toFixed(0)}%</div>
+            <div class="metric-label">Contributor 覆盖率</div>
+            <div class="metric-value">${(quality.governance.contributor_coverage * 100).toFixed(0)}%</div>
           </div>
           <div class="metric-item">
-            <div class="metric-label">权限合规率</div>
-            <div class="metric-value">${(quality.governance.permission_compliance * 100).toFixed(0)}%</div>
+            <div class="metric-label">SourceFile 覆盖率</div>
+            <div class="metric-value">${(quality.governance.source_file_coverage * 100).toFixed(0)}%</div>
           </div>
         </div>
       </div>
@@ -403,12 +399,12 @@ async function renderDashboard() {
             <div class="metric-value">${(quality.reuse_growth.score * 100).toFixed(1)}%</div>
           </div>
           <div class="metric-item">
-            <div class="metric-label">复用率</div>
-            <div class="metric-value">${(quality.reuse_growth.reuse_rate * 100).toFixed(0)}%</div>
+            <div class="metric-label">节点增长率</div>
+            <div class="metric-value">${(quality.reuse_growth.node_growth_rate * 100).toFixed(1)}%</div>
           </div>
           <div class="metric-item">
-            <div class="metric-label">转化率</div>
-            <div class="metric-value">${(quality.reuse_growth.conversion_rate * 100).toFixed(0)}%</div>
+            <div class="metric-label">边增长率</div>
+            <div class="metric-value">${(quality.reuse_growth.edge_growth_rate * 100).toFixed(1)}%</div>
           </div>
           <div class="metric-item">
             <div class="metric-label">知识 ROI</div>
@@ -428,12 +424,12 @@ async function renderDashboard() {
             <div class="metric-value">${stats.total_edges}</div>
           </div>
           <div class="metric-item">
-            <div class="metric-label">活跃页面</div>
-            <div class="metric-value">${stats.status_breakdown?.active || 0}</div>
+            <div class="metric-label">EXTRACTED 边</div>
+            <div class="metric-value">${stats.confidence_breakdown?.EXTRACTED || 0}</div>
           </div>
           <div class="metric-item">
-            <div class="metric-label">草稿/过期</div>
-            <div class="metric-value">${(stats.status_breakdown?.draft || 0) + (stats.status_breakdown?.deprecated || 0)}</div>
+            <div class="metric-label">INFERRED 边</div>
+            <div class="metric-value">${stats.confidence_breakdown?.INFERRED || 0}</div>
           </div>
         </div>
       </div>
@@ -517,13 +513,6 @@ async function renderHistory() {
   } catch(e) {
     console.error('History render error:', e);
   }
-}
-
-async function getWorkDir() {
-  try {
-    const status = await fetchJSON(API + '/status');
-    return status.work_dir || '~/.graphify-lens/data';
-  } catch(e) { return '~/.graphify-lens/data'; }
 }
 
 refreshAll();

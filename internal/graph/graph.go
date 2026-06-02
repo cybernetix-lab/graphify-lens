@@ -4,175 +4,122 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 )
 
-type NodeType string
-
-const (
-	NodeTypeConcept  NodeType = "concept"
-	NodeTypeTopic    NodeType = "topic"
-	NodeTypeRunbook  NodeType = "runbook"
-	NodeTypeDecision NodeType = "decision"
-	NodeTypeCase     NodeType = "case"
-	NodeTypeFAQ      NodeType = "faq"
-	NodeTypeArticle  NodeType = "article"
-	NodeTypeSource   NodeType = "source"
-)
-
-type Node struct {
-	ID             string            `json:"id"`
-	Type           NodeType          `json:"type"`
-	Title          string            `json:"title"`
-	Owner          string            `json:"owner"`
-	Classification string            `json:"classification"`
-	Visibility     string            `json:"visibility_scope"`
-	Status         string            `json:"status"`
-	LastReviewedAt string            `json:"last_reviewed_at"`
-	FreshnessSLA   string            `json:"freshness_sla"`
-	SourceRefs     []string          `json:"source_refs"`
-	ScenarioTags   []string          `json:"scenario_tags"`
-	Properties     map[string]string `json:"properties"`
-	CreatedAt      time.Time         `json:"created_at"`
-	UpdatedAt      time.Time         `json:"updated_at"`
+type GraphifyNode struct {
+	ID             string `json:"id"`
+	Label          string `json:"label"`
+	FileType       string `json:"file_type"`
+	SourceFile     string `json:"source_file"`
+	SourceLocation string `json:"source_location,omitempty"`
+	SourceURL      string `json:"source_url,omitempty"`
+	CapturedAt     string `json:"captured_at,omitempty"`
+	Author         string `json:"author,omitempty"`
+	Contributor    string `json:"contributor,omitempty"`
 }
 
-type Edge struct {
-	ID         string `json:"id"`
-	Source     string `json:"source"`
-	Target     string `json:"target"`
-	Relation   string `json:"relation"`
-	Label      string `json:"label"`
-	Confidence float64 `json:"confidence"`
+type GraphifyEdge struct {
+	Source          string  `json:"source"`
+	Target          string  `json:"target"`
+	Relation        string  `json:"relation"`
+	Confidence      string  `json:"confidence"`
+	ConfidenceScore float64 `json:"confidence_score"`
+	SourceFile      string  `json:"source_file,omitempty"`
+	SourceLocation  string  `json:"source_location,omitempty"`
+	Weight          float64 `json:"weight"`
+}
+
+type GraphifyData struct {
+	Directed   bool           `json:"directed"`
+	Multigraph bool           `json:"multigraph"`
+	Graph      map[string]any `json:"graph"`
+	Nodes      []GraphifyNode `json:"nodes"`
+	Links      []GraphifyEdge `json:"links"`
 }
 
 type Graph struct {
-	Nodes     []Node    `json:"nodes"`
-	Edges     []Edge    `json:"edges"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Version   string    `json:"version"`
+	Nodes     []GraphifyNode `json:"nodes"`
+	Edges     []GraphifyEdge `json:"edges"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	Version   string         `json:"version"`
 }
 
-func ParseDir(workDir string) (*Graph, error) {
+func ParseGraphifyOut(workDir string) (*Graph, error) {
+	graphPath := filepath.Join(workDir, "graphify-out", "graph.json")
+	data, err := os.ReadFile(graphPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return &Graph{
+				Nodes:     make([]GraphifyNode, 0),
+				Edges:     make([]GraphifyEdge, 0),
+				UpdatedAt: time.Now(),
+				Version:   "1.0",
+			}, nil
+		}
+		return nil, err
+	}
+
+	var raw GraphifyData
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, err
+	}
+
 	g := &Graph{
-		Nodes:     make([]Node, 0),
-		Edges:     make([]Edge, 0),
+		Nodes:     raw.Nodes,
+		Edges:     raw.Links,
 		UpdatedAt: time.Now(),
 		Version:   "1.0",
 	}
 
-	nodesDir := filepath.Join(workDir, "nodes")
-	edgesDir := filepath.Join(workDir, "edges")
-
-	if err := parseNodes(nodesDir, g); err != nil {
-		return nil, err
+	if g.Nodes == nil {
+		g.Nodes = make([]GraphifyNode, 0)
 	}
-	if err := parseEdges(edgesDir, g); err != nil {
-		return nil, err
+	if g.Edges == nil {
+		g.Edges = make([]GraphifyEdge, 0)
 	}
 
 	return g, nil
 }
 
-func parseNodes(dir string, g *Graph) error {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
-
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
-			continue
-		}
-		data, err := os.ReadFile(filepath.Join(dir, entry.Name()))
-		if err != nil {
-			continue
-		}
-		var node Node
-		if err := json.Unmarshal(data, &node); err != nil {
-			continue
-		}
-		if node.ID == "" {
-			node.ID = strings.TrimSuffix(entry.Name(), ".json")
-		}
-		g.Nodes = append(g.Nodes, node)
-	}
-	return nil
-}
-
-func parseEdges(dir string, g *Graph) error {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
-
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
-			continue
-		}
-		data, err := os.ReadFile(filepath.Join(dir, entry.Name()))
-		if err != nil {
-			continue
-		}
-		var edges []Edge
-		if err := json.Unmarshal(data, &edges); err != nil {
-			continue
-		}
-		g.Edges = append(g.Edges, edges...)
-	}
-	return nil
-}
-
 func (g *Graph) Stats() GraphStats {
 	stats := GraphStats{
-		TotalNodes:    len(g.Nodes),
-		TotalEdges:    len(g.Edges),
-		TypeBreakdown: make(map[NodeType]int),
-		StatusBreakdown: map[string]int{
-			"active":     0,
-			"draft":      0,
-			"deprecated": 0,
-			"archived":   0,
-			"unknown":    0,
-		},
-		ClassificationBreakdown: make(map[string]int),
-		OwnerBreakdown:          make(map[string]int),
+		TotalNodes:          len(g.Nodes),
+		TotalEdges:          len(g.Edges),
+		FileTypeBreakdown:   make(map[string]int),
+		ConfidenceBreakdown: make(map[string]int),
+		AuthorBreakdown:     make(map[string]int),
 	}
 
 	for _, n := range g.Nodes {
-		stats.TypeBreakdown[n.Type]++
-		status := n.Status
-		if status == "" {
-			status = "unknown"
+		ft := n.FileType
+		if ft == "" {
+			ft = "unknown"
 		}
-		stats.StatusBreakdown[status]++
-		class := n.Classification
-		if class == "" {
-			class = "unset"
+		stats.FileTypeBreakdown[ft]++
+
+		author := n.Author
+		if author == "" {
+			author = "unset"
 		}
-		stats.ClassificationBreakdown[class]++
-		owner := n.Owner
-		if owner == "" {
-			owner = "unset"
+		stats.AuthorBreakdown[author]++
+	}
+
+	for _, e := range g.Edges {
+		conf := e.Confidence
+		if conf == "" {
+			conf = "UNKNOWN"
 		}
-		stats.OwnerBreakdown[owner]++
+		stats.ConfidenceBreakdown[conf]++
 	}
 
 	return stats
 }
 
 type GraphStats struct {
-	TotalNodes              int              `json:"total_nodes"`
-	TotalEdges              int              `json:"total_edges"`
-	TypeBreakdown           map[NodeType]int `json:"type_breakdown"`
-	StatusBreakdown         map[string]int   `json:"status_breakdown"`
-	ClassificationBreakdown map[string]int   `json:"classification_breakdown"`
-	OwnerBreakdown          map[string]int   `json:"owner_breakdown"`
+	TotalNodes          int            `json:"total_nodes"`
+	TotalEdges          int            `json:"total_edges"`
+	FileTypeBreakdown   map[string]int `json:"file_type_breakdown"`
+	ConfidenceBreakdown map[string]int `json:"confidence_breakdown"`
+	AuthorBreakdown     map[string]int `json:"author_breakdown"`
 }

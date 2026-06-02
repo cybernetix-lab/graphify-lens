@@ -9,35 +9,30 @@ import (
 
 func makeTestGraph() *graph.Graph {
 	now := time.Now().UTC().Format(time.RFC3339)
-	oldDate := time.Now().AddDate(0, -3, 0).UTC().Format(time.RFC3339)
+	oldDate := time.Now().AddDate(0, -7, 0).UTC().Format(time.RFC3339)
 
 	return &graph.Graph{
-		Nodes: []graph.Node{
+		Nodes: []graph.GraphifyNode{
 			{
-				ID: "n1", Type: graph.NodeTypeConcept, Title: "Concept 1",
-				Owner: "alice", Classification: "L1", Visibility: "all",
-				Status: "active", LastReviewedAt: now, FreshnessSLA: "720h",
-				SourceRefs: []string{"https://example.com/1"},
-				ScenarioTags: []string{"oncall"},
+				ID: "n1", Label: "Concept 1", FileType: "code",
+				SourceFile: "src/main.go", CapturedAt: now,
+				Author: "alice", Contributor: "alice",
 			},
 			{
-				ID: "n2", Type: graph.NodeTypeTopic, Title: "Topic 1",
-				Owner: "bob", Classification: "L2", Visibility: "team",
-				Status: "active", LastReviewedAt: oldDate, FreshnessSLA: "720h",
-				SourceRefs: []string{},
-				ScenarioTags: []string{"coding"},
+				ID: "n2", Label: "Document 1", FileType: "document",
+				SourceFile: "docs/readme.md", CapturedAt: oldDate,
+				Author: "bob", Contributor: "alice",
 			},
 			{
-				ID: "n3", Type: graph.NodeTypeRunbook, Title: "Runbook 1",
-				Owner: "", Classification: "", Visibility: "",
-				Status: "", LastReviewedAt: "",
-				SourceRefs: []string{},
-				ScenarioTags: []string{},
+				ID: "n3", Label: "Paper 1", FileType: "paper",
+				SourceFile: "papers/paper.pdf", CapturedAt: "",
+				Author: "", Contributor: "",
 			},
 		},
-		Edges: []graph.Edge{
-			{ID: "e1", Source: "n1", Target: "n2", Relation: "depends_on", Confidence: 0.9},
-			{ID: "e2", Source: "n2", Target: "n3", Relation: "references", Confidence: 0.3},
+		Edges: []graph.GraphifyEdge{
+			{Source: "n1", Target: "n2", Relation: "references", Confidence: "EXTRACTED", ConfidenceScore: 1.0},
+			{Source: "n2", Target: "n3", Relation: "cites", Confidence: "INFERRED", ConfidenceScore: 0.75},
+			{Source: "n3", Target: "n1", Relation: "conceptually_related_to", Confidence: "AMBIGUOUS", ConfidenceScore: 0.25},
 		},
 	}
 }
@@ -68,8 +63,14 @@ func TestAssess_Coverage(t *testing.T) {
 	if a.Coverage.Score < 0 || a.Coverage.Score > 1 {
 		t.Errorf("coverage score out of range: %f", a.Coverage.Score)
 	}
-	if a.Coverage.TypeCoverage <= 0 {
-		t.Error("type coverage should be > 0 with 3 node types")
+	if a.Coverage.NodeCount != 3 {
+		t.Errorf("expected 3 nodes, got %d", a.Coverage.NodeCount)
+	}
+	if a.Coverage.EdgeCount != 3 {
+		t.Errorf("expected 3 edges, got %d", a.Coverage.EdgeCount)
+	}
+	if a.Coverage.FileTypeCount != 3 {
+		t.Errorf("expected 3 file types, got %d", a.Coverage.FileTypeCount)
 	}
 }
 
@@ -82,8 +83,14 @@ func TestAssess_Accuracy(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if a.Accuracy.GroundedEdgeRate != 0.5 {
-		t.Errorf("expected grounded edge rate 0.5, got %f", a.Accuracy.GroundedEdgeRate)
+	if a.Accuracy.ExtractedRate != 1.0/3.0 {
+		t.Errorf("expected extracted rate 1/3, got %f", a.Accuracy.ExtractedRate)
+	}
+	if a.Accuracy.InferredRate != 1.0/3.0 {
+		t.Errorf("expected inferred rate 1/3, got %f", a.Accuracy.InferredRate)
+	}
+	if a.Accuracy.AmbiguousRate != 1.0/3.0 {
+		t.Errorf("expected ambiguous rate 1/3, got %f", a.Accuracy.AmbiguousRate)
 	}
 }
 
@@ -96,8 +103,11 @@ func TestAssess_Freshness(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if a.Freshness.StalePageRatio <= 0 {
-		t.Error("stale page ratio should be > 0 with an old review date")
+	if a.Freshness.NodesWithTimestamp != 2 {
+		t.Errorf("expected 2 nodes with timestamp, got %d", a.Freshness.NodesWithTimestamp)
+	}
+	if a.Freshness.StaleNodeRatio <= 0 {
+		t.Error("stale node ratio should be > 0 with an old capture date")
 	}
 }
 
@@ -110,11 +120,11 @@ func TestAssess_Governance(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if a.Governance.MetadataCompleteness >= 1.0 {
-		t.Error("metadata completeness should be < 1.0 with incomplete node")
+	if a.Governance.AuthorCoverage >= 1.0 {
+		t.Error("author coverage should be < 1.0 with incomplete node")
 	}
-	if a.Governance.OwnerCoverage < 0.5 {
-		t.Error("owner coverage should be >= 0.5")
+	if a.Governance.SourceFileCoverage != 1.0 {
+		t.Errorf("expected source_file coverage 1.0, got %f", a.Governance.SourceFileCoverage)
 	}
 }
 
@@ -138,9 +148,9 @@ func TestAssess_EmptyGraph(t *testing.T) {
 func TestSaveAndLoadHistory(t *testing.T) {
 	dir := t.TempDir()
 	a := &Assessment{
-		Timestamp: time.Now(),
+		Timestamp:  time.Now(),
 		TotalScore: 0.85,
-		Version: "1.0",
+		Version:    "1.0",
 	}
 
 	if err := SaveAssessment(a, dir); err != nil {

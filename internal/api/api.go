@@ -34,7 +34,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 }
 
 func (h *Handler) handleGraph(w http.ResponseWriter, r *http.Request) {
-	g, err := graph.ParseDir(h.workDir)
+	g, err := graph.ParseGraphifyOut(h.workDir)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
@@ -43,7 +43,7 @@ func (h *Handler) handleGraph(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleStats(w http.ResponseWriter, r *http.Request) {
-	g, err := graph.ParseDir(h.workDir)
+	g, err := graph.ParseGraphifyOut(h.workDir)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
@@ -59,7 +59,7 @@ func (h *Handler) handleQualityCurrent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	g, err := graph.ParseDir(h.workDir)
+	g, err := graph.ParseGraphifyOut(h.workDir)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return

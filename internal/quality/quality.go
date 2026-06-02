@@ -12,49 +12,52 @@ import (
 )
 
 type Assessment struct {
-	Timestamp   time.Time     `json:"timestamp"`
-	Coverage    CoverageScore `json:"coverage"`
-	Accuracy    AccuracyScore `json:"accuracy"`
-	Freshness   FreshnessScore `json:"freshness"`
-	Governance  GovernanceScore `json:"governance"`
+	Timestamp   time.Time        `json:"timestamp"`
+	Coverage    CoverageScore    `json:"coverage"`
+	Accuracy    AccuracyScore    `json:"accuracy"`
+	Freshness   FreshnessScore   `json:"freshness"`
+	Governance  GovernanceScore  `json:"governance"`
 	ReuseGrowth ReuseGrowthScore `json:"reuse_growth"`
-	TotalScore  float64       `json:"total_score"`
-	Version     string        `json:"version"`
+	TotalScore  float64          `json:"total_score"`
+	Version     string           `json:"version"`
 }
 
 type CoverageScore struct {
-	Score            float64 `json:"score"`
-	TopicCoverage    float64 `json:"topic_coverage"`
-	ScenarioCoverage float64 `json:"scenario_coverage"`
-	TypeCoverage     float64 `json:"type_coverage"`
+	Score          float64 `json:"score"`
+	NodeCount      int     `json:"node_count"`
+	EdgeCount      int     `json:"edge_count"`
+	FileTypeCount  int     `json:"file_type_count"`
+	TypeDiversity  float64 `json:"type_diversity"`
+	EdgeDensity    float64 `json:"edge_density"`
 }
 
 type AccuracyScore struct {
-	Score              float64 `json:"score"`
-	GroundedEdgeRate   float64 `json:"grounded_edge_rate"`
-	ConflictExposure   float64 `json:"conflict_exposure"`
-	SourceRefCoverage  float64 `json:"source_ref_coverage"`
+	Score            float64 `json:"score"`
+	ExtractedRate    float64 `json:"extracted_rate"`
+	InferredRate     float64 `json:"inferred_rate"`
+	AmbiguousRate    float64 `json:"ambiguous_rate"`
+	AvgConfidence    float64 `json:"avg_confidence"`
 }
 
 type FreshnessScore struct {
 	Score              float64 `json:"score"`
-	FreshnessCompliance float64 `json:"freshness_compliance"`
-	StalePageRatio     float64 `json:"stale_page_ratio"`
-	AvgDaysSinceReview float64 `json:"avg_days_since_review"`
+	NodesWithTimestamp  int     `json:"nodes_with_timestamp"`
+	AvgDaysSinceCapture float64 `json:"avg_days_since_capture"`
+	StaleNodeRatio     float64 `json:"stale_node_ratio"`
 }
 
 type GovernanceScore struct {
-	Score                float64 `json:"score"`
-	MetadataCompleteness float64 `json:"metadata_completeness"`
-	OwnerCoverage        float64 `json:"owner_coverage"`
-	PermissionCompliance float64 `json:"permission_compliance"`
+	Score              float64 `json:"score"`
+	AuthorCoverage     float64 `json:"author_coverage"`
+	ContributorCoverage float64 `json:"contributor_coverage"`
+	SourceFileCoverage float64 `json:"source_file_coverage"`
 }
 
 type ReuseGrowthScore struct {
-	Score               float64 `json:"score"`
-	ReuseRate           float64 `json:"reuse_rate"`
-	ConversionRate      float64 `json:"conversion_rate"`
-	KnowledgeROI        float64 `json:"knowledge_roi"`
+	Score          float64 `json:"score"`
+	NodeGrowthRate float64 `json:"node_growth_rate"`
+	EdgeGrowthRate float64 `json:"edge_growth_rate"`
+	KnowledgeROI   float64 `json:"knowledge_roi"`
 }
 
 const (
@@ -78,10 +81,10 @@ func Assess(g *graph.Graph, historyDir string) (*Assessment, error) {
 	a.ReuseGrowth = assessReuseGrowth(g, historyDir)
 
 	a.TotalScore = math.Round(
-		a.Coverage.Score*weightCoverage*100 +
-			a.Accuracy.Score*weightAccuracy*100 +
-			a.Freshness.Score*weightFreshness*100 +
-			a.Governance.Score*weightGovernance*100 +
+		a.Coverage.Score*weightCoverage*100+
+			a.Accuracy.Score*weightAccuracy*100+
+			a.Freshness.Score*weightFreshness*100+
+			a.Governance.Score*weightGovernance*100+
 			a.ReuseGrowth.Score*weightReuseGrowth*100,
 	) / 100
 
@@ -89,69 +92,61 @@ func Assess(g *graph.Graph, historyDir string) (*Assessment, error) {
 }
 
 func assessCoverage(g *graph.Graph) CoverageScore {
-	cs := CoverageScore{}
+	cs := CoverageScore{
+		NodeCount: len(g.Nodes),
+		EdgeCount: len(g.Edges),
+	}
 
-	expectedTypes := 6.0
-	actualTypes := 0.0
-	typeSet := make(map[graph.NodeType]bool)
+	typeSet := make(map[string]bool)
 	for _, n := range g.Nodes {
-		if n.Type != "" {
-			typeSet[n.Type] = true
+		if n.FileType != "" {
+			typeSet[n.FileType] = true
 		}
 	}
-	actualTypes = float64(len(typeSet))
-	cs.TypeCoverage = math.Min(actualTypes/expectedTypes, 1.0)
+	cs.FileTypeCount = len(typeSet)
+	cs.TypeDiversity = math.Min(float64(cs.FileTypeCount)/5.0, 1.0)
 
-	topicCount := 0
-	for _, n := range g.Nodes {
-		if n.Type == graph.NodeTypeTopic {
-			topicCount++
-		}
+	if len(g.Nodes) > 0 {
+		cs.EdgeDensity = math.Min(float64(len(g.Edges))/float64(len(g.Nodes)*2), 1.0)
 	}
-	cs.TopicCoverage = math.Min(float64(topicCount)/5.0, 1.0)
 
-	scenarioSet := make(map[string]bool)
-	for _, n := range g.Nodes {
-		for _, tag := range n.ScenarioTags {
-			scenarioSet[tag] = true
-		}
-	}
-	cs.ScenarioCoverage = math.Min(float64(len(scenarioSet))/3.0, 1.0)
-
-	cs.Score = cs.TypeCoverage*0.4 + cs.TopicCoverage*0.3 + cs.ScenarioCoverage*0.3
+	nodeCountScore := math.Min(float64(cs.NodeCount)/50.0, 1.0)
+	cs.Score = nodeCountScore*0.3 + cs.TypeDiversity*0.4 + cs.EdgeDensity*0.3
 	return cs
 }
 
 func assessAccuracy(g *graph.Graph) AccuracyScore {
 	as := AccuracyScore{}
 
-	groundedEdges := 0
+	extracted := 0
+	inferred := 0
+	ambiguous := 0
+	totalConf := 0.0
+
 	for _, e := range g.Edges {
-		if e.Confidence > 0.5 {
-			groundedEdges++
+		switch e.Confidence {
+		case "EXTRACTED":
+			extracted++
+		case "INFERRED":
+			inferred++
+		case "AMBIGUOUS":
+			ambiguous++
 		}
+		totalConf += e.ConfidenceScore
 	}
-	if len(g.Edges) > 0 {
-		as.GroundedEdgeRate = float64(groundedEdges) / float64(len(g.Edges))
+
+	total := len(g.Edges)
+	if total > 0 {
+		as.ExtractedRate = float64(extracted) / float64(total)
+		as.InferredRate = float64(inferred) / float64(total)
+		as.AmbiguousRate = float64(ambiguous) / float64(total)
+		as.AvgConfidence = totalConf / float64(total)
 	} else {
-		as.GroundedEdgeRate = 1.0
+		as.ExtractedRate = 1.0
+		as.AvgConfidence = 1.0
 	}
 
-	nodesWithRefs := 0
-	for _, n := range g.Nodes {
-		if len(n.SourceRefs) > 0 {
-			nodesWithRefs++
-		}
-	}
-	if len(g.Nodes) > 0 {
-		as.SourceRefCoverage = float64(nodesWithRefs) / float64(len(g.Nodes))
-	} else {
-		as.SourceRefCoverage = 1.0
-	}
-
-	as.ConflictExposure = 0.0
-
-	as.Score = as.GroundedEdgeRate*0.5 + as.SourceRefCoverage*0.4 + (1.0-as.ConflictExposure)*0.1
+	as.Score = as.ExtractedRate*0.5 + as.AvgConfidence*0.3 + (1.0-as.AmbiguousRate)*0.2
 	return as
 }
 
@@ -159,113 +154,99 @@ func assessFreshness(g *graph.Graph) FreshnessScore {
 	fs := FreshnessScore{}
 
 	now := time.Now()
-	staleCount := 0
+	withTimestamp := 0
 	totalDays := 0.0
-	reviewedCount := 0
+	staleCount := 0
 
 	for _, n := range g.Nodes {
-		if n.LastReviewedAt == "" {
-			staleCount++
+		if n.CapturedAt == "" {
 			continue
 		}
-		t, err := time.Parse(time.RFC3339, n.LastReviewedAt)
+		t, err := time.Parse(time.RFC3339, n.CapturedAt)
 		if err != nil {
-			staleCount++
 			continue
 		}
 		days := now.Sub(t).Hours() / 24
 		totalDays += days
-		reviewedCount++
+		withTimestamp++
 
-		sla := n.FreshnessSLA
-		if sla == "" {
-			sla = "720h"
-		}
-		slaDuration, err := time.ParseDuration(sla)
-		if err != nil {
-			slaDuration = 720 * time.Hour
-		}
-		if days > slaDuration.Hours()/24 {
+		if days > 180 {
 			staleCount++
 		}
 	}
 
+	fs.NodesWithTimestamp = withTimestamp
+	if withTimestamp > 0 {
+		fs.AvgDaysSinceCapture = totalDays / float64(withTimestamp)
+	}
+
 	if len(g.Nodes) > 0 {
-		fs.StalePageRatio = float64(staleCount) / float64(len(g.Nodes))
-		fs.FreshnessCompliance = 1.0 - fs.StalePageRatio
-	} else {
-		fs.FreshnessCompliance = 1.0
+		fs.StaleNodeRatio = float64(staleCount) / float64(len(g.Nodes))
 	}
 
-	if reviewedCount > 0 {
-		fs.AvgDaysSinceReview = totalDays / float64(reviewedCount)
-	}
-
-	fs.Score = fs.FreshnessCompliance*0.6 + math.Max(0, 1.0-fs.AvgDaysSinceReview/365.0)*0.4
+	freshnessCompliance := 1.0 - fs.StaleNodeRatio
+	ageScore := math.Max(0, 1.0-fs.AvgDaysSinceCapture/365.0)
+	fs.Score = freshnessCompliance*0.6 + ageScore*0.4
 	return fs
 }
 
 func assessGovernance(g *graph.Graph) GovernanceScore {
 	gs := GovernanceScore{}
 
-	requiredFields := []string{"owner", "classification", "visibility_scope", "status"}
-	completeNodes := 0
-	hasOwner := 0
-	hasPermission := 0
+	hasAuthor := 0
+	hasContributor := 0
+	hasSourceFile := 0
 
 	for _, n := range g.Nodes {
-		complete := true
-		if n.Owner == "" {
-			complete = false
-		} else {
-			hasOwner++
+		if n.Author != "" {
+			hasAuthor++
 		}
-		if n.Classification == "" {
-			complete = false
+		if n.Contributor != "" {
+			hasContributor++
 		}
-		if n.Visibility == "" {
-			complete = false
-		} else {
-			hasPermission++
+		if n.SourceFile != "" {
+			hasSourceFile++
 		}
-		if n.Status == "" {
-			complete = false
-		}
-		if complete {
-			completeNodes++
-		}
-		_ = requiredFields
 	}
 
-	if len(g.Nodes) > 0 {
-		gs.MetadataCompleteness = float64(completeNodes) / float64(len(g.Nodes))
-		gs.OwnerCoverage = float64(hasOwner) / float64(len(g.Nodes))
-		gs.PermissionCompliance = float64(hasPermission) / float64(len(g.Nodes))
+	total := len(g.Nodes)
+	if total > 0 {
+		gs.AuthorCoverage = float64(hasAuthor) / float64(total)
+		gs.ContributorCoverage = float64(hasContributor) / float64(total)
+		gs.SourceFileCoverage = float64(hasSourceFile) / float64(total)
 	} else {
-		gs.MetadataCompleteness = 1.0
-		gs.OwnerCoverage = 1.0
-		gs.PermissionCompliance = 1.0
+		gs.AuthorCoverage = 1.0
+		gs.ContributorCoverage = 1.0
+		gs.SourceFileCoverage = 1.0
 	}
 
-	gs.Score = gs.MetadataCompleteness*0.5 + gs.OwnerCoverage*0.3 + gs.PermissionCompliance*0.2
+	gs.Score = gs.AuthorCoverage*0.4 + gs.SourceFileCoverage*0.4 + gs.ContributorCoverage*0.2
 	return gs
 }
 
 func assessReuseGrowth(g *graph.Graph, historyDir string) ReuseGrowthScore {
 	rgs := ReuseGrowthScore{}
 
-	prevAssessment := loadPreviousAssessment(historyDir)
-	if prevAssessment != nil {
-		growth := 0.0
-		if prevAssessment.TotalScore > 0 {
-			growth = (rgs.Score - prevAssessment.TotalScore) / prevAssessment.TotalScore
+	prev := loadPreviousAssessment(historyDir)
+	if prev != nil {
+		prevNodes := float64(prev.Coverage.NodeCount)
+		prevEdges := float64(prev.Coverage.EdgeCount)
+		currNodes := float64(len(g.Nodes))
+		currEdges := float64(len(g.Edges))
+
+		if prevNodes > 0 {
+			rgs.NodeGrowthRate = (currNodes - prevNodes) / prevNodes
 		}
-		rgs.KnowledgeROI = math.Max(0, growth)
+		if prevEdges > 0 {
+			rgs.EdgeGrowthRate = (currEdges - prevEdges) / prevEdges
+		}
+
+		if prev.TotalScore > 0 {
+			rgs.KnowledgeROI = math.Max(0, (rgs.NodeGrowthRate+rgs.EdgeGrowthRate)/2)
+		}
 	}
 
-	rgs.ReuseRate = 0.5
-	rgs.ConversionRate = 0.3
-	rgs.Score = rgs.ReuseRate*0.4 + rgs.ConversionRate*0.3 + math.Min(rgs.KnowledgeROI*10, 1.0)*0.3
+	rgs.Score = math.Min(math.Max(rgs.NodeGrowthRate*5, 0)+math.Max(rgs.EdgeGrowthRate*5, 0)+math.Min(rgs.KnowledgeROI*10, 1.0)*0.3, 1.0)
 	return rgs
 }
 

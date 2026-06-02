@@ -1,18 +1,60 @@
 package graph
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
 )
 
-func TestParseDir_Empty(t *testing.T) {
-	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, "nodes"), 0755)
-	os.MkdirAll(filepath.Join(dir, "edges"), 0755)
+func makeTestGraphJSON() []byte {
+	return []byte(`{
+  "directed": true,
+  "multigraph": false,
+  "graph": {},
+  "nodes": [
+    {"id": "n1", "label": "Concept 1", "file_type": "code", "source_file": "src/main.go", "captured_at": "2025-06-01T10:00:00Z", "author": "alice", "contributor": "alice"},
+    {"id": "n2", "label": "Document 1", "file_type": "document", "source_file": "docs/readme.md", "captured_at": "2025-03-01T10:00:00Z", "author": "bob", "contributor": "alice"},
+    {"id": "n3", "label": "Paper 1", "file_type": "paper", "source_file": "papers/paper.pdf", "source_url": "https://arxiv.org/abs/1234.5678", "captured_at": "2025-01-01T10:00:00Z", "author": "Smith et al."},
+    {"id": "n4", "label": "Image 1", "file_type": "image", "source_file": "assets/diagram.png"}
+  ],
+  "links": [
+    {"source": "n1", "target": "n2", "relation": "references", "confidence": "EXTRACTED", "confidence_score": 1.0, "weight": 1.0},
+    {"source": "n2", "target": "n3", "relation": "cites", "confidence": "INFERRED", "confidence_score": 0.75, "weight": 0.75},
+    {"source": "n3", "target": "n4", "relation": "depicts", "confidence": "AMBIGUOUS", "confidence_score": 0.25, "weight": 0.25}
+  ]
+}`)
+}
 
-	g, err := ParseDir(dir)
+func TestParseGraphifyOut_Valid(t *testing.T) {
+	dir := t.TempDir()
+	outDir := filepath.Join(dir, "graphify-out")
+	os.MkdirAll(outDir, 0755)
+	os.WriteFile(filepath.Join(outDir, "graph.json"), makeTestGraphJSON(), 0644)
+
+	g, err := ParseGraphifyOut(dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(g.Nodes) != 4 {
+		t.Errorf("expected 4 nodes, got %d", len(g.Nodes))
+	}
+	if len(g.Edges) != 3 {
+		t.Errorf("expected 3 edges, got %d", len(g.Edges))
+	}
+	if g.Nodes[0].Label != "Concept 1" {
+		t.Errorf("expected 'Concept 1', got '%s'", g.Nodes[0].Label)
+	}
+	if g.Nodes[0].FileType != "code" {
+		t.Errorf("expected 'code', got '%s'", g.Nodes[0].FileType)
+	}
+	if g.Nodes[0].Author != "alice" {
+		t.Errorf("expected 'alice', got '%s'", g.Nodes[0].Author)
+	}
+}
+
+func TestParseGraphifyOut_EmptyDir(t *testing.T) {
+	dir := t.TempDir()
+	g, err := ParseGraphifyOut(dir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -24,68 +66,35 @@ func TestParseDir_Empty(t *testing.T) {
 	}
 }
 
-func TestParseDir_WithNodes(t *testing.T) {
-	dir := t.TempDir()
-	nodesDir := filepath.Join(dir, "nodes")
-	edgesDir := filepath.Join(dir, "edges")
-	os.MkdirAll(nodesDir, 0755)
-	os.MkdirAll(edgesDir, 0755)
-
-	node := Node{
-		ID:             "test_001",
-		Type:           NodeTypeConcept,
-		Title:          "Test Concept",
-		Owner:          "alice",
-		Classification: "L1",
-		Visibility:     "all",
-		Status:         "active",
-	}
-	data, _ := json.Marshal(node)
-	os.WriteFile(filepath.Join(nodesDir, "test_001.json"), data, 0644)
-
-	g, err := ParseDir(dir)
+func TestParseGraphifyOut_NonexistentDir(t *testing.T) {
+	g, err := ParseGraphifyOut("/nonexistent/path")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(g.Nodes) != 1 {
-		t.Fatalf("expected 1 node, got %d", len(g.Nodes))
-	}
-	if g.Nodes[0].Title != "Test Concept" {
-		t.Errorf("expected 'Test Concept', got '%s'", g.Nodes[0].Title)
-	}
-	if g.Nodes[0].Owner != "alice" {
-		t.Errorf("expected 'alice', got '%s'", g.Nodes[0].Owner)
+	if len(g.Nodes) != 0 {
+		t.Errorf("expected 0 nodes, got %d", len(g.Nodes))
 	}
 }
 
-func TestParseDir_WithEdges(t *testing.T) {
+func TestParseGraphifyOut_InvalidJSON(t *testing.T) {
 	dir := t.TempDir()
-	nodesDir := filepath.Join(dir, "nodes")
-	edgesDir := filepath.Join(dir, "edges")
-	os.MkdirAll(nodesDir, 0755)
-	os.MkdirAll(edgesDir, 0755)
+	outDir := filepath.Join(dir, "graphify-out")
+	os.MkdirAll(outDir, 0755)
+	os.WriteFile(filepath.Join(outDir, "graph.json"), []byte(`{invalid`), 0644)
 
-	edges := []Edge{
-		{ID: "e1", Source: "a", Target: "b", Relation: "depends_on", Confidence: 0.9},
-		{ID: "e2", Source: "b", Target: "c", Relation: "references", Confidence: 0.7},
-	}
-	data, _ := json.Marshal(edges)
-	os.WriteFile(filepath.Join(edgesDir, "relations.json"), data, 0644)
-
-	g, err := ParseDir(dir)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(g.Edges) != 2 {
-		t.Fatalf("expected 2 edges, got %d", len(g.Edges))
-	}
-	if g.Edges[0].Confidence != 0.9 {
-		t.Errorf("expected confidence 0.9, got %f", g.Edges[0].Confidence)
+	_, err := ParseGraphifyOut(dir)
+	if err == nil {
+		t.Error("expected error for invalid JSON")
 	}
 }
 
-func TestParseDir_NonexistentDir(t *testing.T) {
-	g, err := ParseDir("/nonexistent/path")
+func TestParseGraphifyOut_EmptyGraph(t *testing.T) {
+	dir := t.TempDir()
+	outDir := filepath.Join(dir, "graphify-out")
+	os.MkdirAll(outDir, 0755)
+	os.WriteFile(filepath.Join(outDir, "graph.json"), []byte(`{"directed":true,"multigraph":false,"graph":{},"nodes":[],"links":[]}`), 0644)
+
+	g, err := ParseGraphifyOut(dir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -96,14 +105,16 @@ func TestParseDir_NonexistentDir(t *testing.T) {
 
 func TestStats(t *testing.T) {
 	g := &Graph{
-		Nodes: []Node{
-			{ID: "n1", Type: NodeTypeConcept, Status: "active", Owner: "alice", Classification: "L1"},
-			{ID: "n2", Type: NodeTypeTopic, Status: "draft", Owner: "bob", Classification: "L2"},
-			{ID: "n3", Type: NodeTypeConcept, Status: "active", Owner: "alice", Classification: "L1"},
-			{ID: "n4", Type: NodeTypeRunbook, Status: "", Owner: "", Classification: ""},
+		Nodes: []GraphifyNode{
+			{ID: "n1", FileType: "code", Author: "alice"},
+			{ID: "n2", FileType: "code", Author: "alice"},
+			{ID: "n3", FileType: "document", Author: "bob"},
+			{ID: "n4", FileType: "paper", Author: ""},
 		},
-		Edges: []Edge{
-			{ID: "e1", Source: "n1", Target: "n2"},
+		Edges: []GraphifyEdge{
+			{Source: "n1", Target: "n2", Confidence: "EXTRACTED"},
+			{Source: "n2", Target: "n3", Confidence: "INFERRED"},
+			{Source: "n3", Target: "n4", Confidence: "AMBIGUOUS"},
 		},
 	}
 
@@ -111,52 +122,38 @@ func TestStats(t *testing.T) {
 	if stats.TotalNodes != 4 {
 		t.Errorf("expected 4 nodes, got %d", stats.TotalNodes)
 	}
-	if stats.TotalEdges != 1 {
-		t.Errorf("expected 1 edge, got %d", stats.TotalEdges)
+	if stats.TotalEdges != 3 {
+		t.Errorf("expected 3 edges, got %d", stats.TotalEdges)
 	}
-	if stats.TypeBreakdown[NodeTypeConcept] != 2 {
-		t.Errorf("expected 2 concepts, got %d", stats.TypeBreakdown[NodeTypeConcept])
+	if stats.FileTypeBreakdown["code"] != 2 {
+		t.Errorf("expected 2 code nodes, got %d", stats.FileTypeBreakdown["code"])
 	}
-	if stats.StatusBreakdown["active"] != 2 {
-		t.Errorf("expected 2 active, got %d", stats.StatusBreakdown["active"])
+	if stats.FileTypeBreakdown["document"] != 1 {
+		t.Errorf("expected 1 document node, got %d", stats.FileTypeBreakdown["document"])
 	}
-	if stats.StatusBreakdown["unknown"] != 1 {
-		t.Errorf("expected 1 unknown, got %d", stats.StatusBreakdown["unknown"])
+	if stats.ConfidenceBreakdown["EXTRACTED"] != 1 {
+		t.Errorf("expected 1 EXTRACTED edge, got %d", stats.ConfidenceBreakdown["EXTRACTED"])
 	}
-	if stats.OwnerBreakdown["unset"] != 1 {
-		t.Errorf("expected 1 unset owner, got %d", stats.OwnerBreakdown["unset"])
-	}
-}
-
-func TestParseDir_InvalidJSON(t *testing.T) {
-	dir := t.TempDir()
-	nodesDir := filepath.Join(dir, "nodes")
-	os.MkdirAll(nodesDir, 0755)
-	os.WriteFile(filepath.Join(nodesDir, "bad.json"), []byte(`{invalid`), 0644)
-
-	g, err := ParseDir(dir)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(g.Nodes) != 0 {
-		t.Errorf("expected 0 nodes for invalid JSON, got %d", len(g.Nodes))
+	if stats.AuthorBreakdown["unset"] != 1 {
+		t.Errorf("expected 1 unset author, got %d", stats.AuthorBreakdown["unset"])
 	}
 }
 
-func TestParseDir_IDFromFilename(t *testing.T) {
+func TestParseGraphifyOut_ConfidenceScore(t *testing.T) {
 	dir := t.TempDir()
-	nodesDir := filepath.Join(dir, "nodes")
-	os.MkdirAll(nodesDir, 0755)
+	outDir := filepath.Join(dir, "graphify-out")
+	os.MkdirAll(outDir, 0755)
+	os.WriteFile(filepath.Join(outDir, "graph.json"), makeTestGraphJSON(), 0644)
 
-	node := Node{Type: NodeTypeFAQ, Title: "FAQ Item"}
-	data, _ := json.Marshal(node)
-	os.WriteFile(filepath.Join(nodesDir, "faq_042.json"), data, 0644)
-
-	g, err := ParseDir(dir)
+	g, err := ParseGraphifyOut(dir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if g.Nodes[0].ID != "faq_042" {
-		t.Errorf("expected ID 'faq_042', got '%s'", g.Nodes[0].ID)
+
+	if g.Edges[0].ConfidenceScore != 1.0 {
+		t.Errorf("expected confidence_score 1.0, got %f", g.Edges[0].ConfidenceScore)
+	}
+	if g.Edges[0].Confidence != "EXTRACTED" {
+		t.Errorf("expected EXTRACTED, got %s", g.Edges[0].Confidence)
 	}
 }

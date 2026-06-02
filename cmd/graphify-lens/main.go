@@ -73,8 +73,7 @@ func ensureDirs(cfg *config.Config) error {
 		cfg.WorkDir,
 		cfg.QualityHistory,
 		cfg.DataDir,
-		filepath.Join(cfg.WorkDir, "nodes"),
-		filepath.Join(cfg.WorkDir, "edges"),
+		filepath.Join(cfg.WorkDir, "graphify-out"),
 	}
 	for _, d := range dirs {
 		if err := os.MkdirAll(d, 0755); err != nil {

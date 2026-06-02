@@ -1,5 +1,5 @@
 {
-  "work_dir": "~/.graphify-lens/data",
+  "work_dir": "./data/sample",
   "port": 8080,
   "git_auto_commit": true,
   "commit_interval": "30m",

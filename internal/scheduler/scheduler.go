@@ -72,7 +72,7 @@ func (s *Scheduler) RunNow() *CycleResult {
 func (s *Scheduler) runCycle() *CycleResult {
 	result := &CycleResult{Time: time.Now()}
 
-	g, err := graph.ParseDir(s.cfg.WorkDir)
+	g, err := graph.ParseGraphifyOut(s.cfg.WorkDir)
 	if err != nil {
 		log.Printf("[scheduler] graph parse error: %v", err)
 		return result
