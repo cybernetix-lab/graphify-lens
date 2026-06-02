@@ -31,6 +31,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/api/graph", h.handleGraph)
 	mux.HandleFunc("/api/graph/summary", h.handleGraphSummary)
 	mux.HandleFunc("/api/graph/query", h.handleGraphQuery)
+	mux.HandleFunc("/api/graph/snapshot", h.handleGraphSnapshot)
 	mux.HandleFunc("/api/stats", h.handleStats)
 	mux.HandleFunc("/api/quality/current", h.handleQualityCurrent)
 	mux.HandleFunc("/api/quality/history", h.handleQualityHistory)
@@ -111,6 +112,15 @@ func (h *Handler) handleGraphQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) handleGraphSnapshot(w http.ResponseWriter, r *http.Request) {
+	snapshot, err := graph.LoadSnapshot(h.resolveWorkDir(r))
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, snapshot)
 }
 
 func (h *Handler) handleStats(w http.ResponseWriter, r *http.Request) {

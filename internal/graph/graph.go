@@ -173,7 +173,6 @@ func ParseGraphifyOutQuery(workDir string, q GraphQuery) (*GraphResult, error) {
 	fileTypeLower := strings.ToLower(q.FileType)
 
 	var matchedNodes []GraphifyNode
-	matchedIDs := make(map[string]bool)
 
 	for _, n := range raw.Nodes {
 		if fileTypeLower != "" && strings.ToLower(n.FileType) != fileTypeLower {
@@ -187,7 +186,6 @@ func ParseGraphifyOutQuery(workDir string, q GraphQuery) (*GraphResult, error) {
 			}
 		}
 		matchedNodes = append(matchedNodes, n)
-		matchedIDs[n.ID] = true
 	}
 
 	totalMatched := len(matchedNodes)
@@ -202,9 +200,14 @@ func ParseGraphifyOutQuery(workDir string, q GraphQuery) (*GraphResult, error) {
 	}
 	pagedNodes := matchedNodes[q.Offset:end]
 
+	pagedIDs := make(map[string]bool, len(pagedNodes))
+	for _, n := range pagedNodes {
+		pagedIDs[n.ID] = true
+	}
+
 	var pagedEdges []GraphifyEdge
 	for _, e := range raw.Links {
-		if matchedIDs[e.Source] && matchedIDs[e.Target] {
+		if pagedIDs[e.Source] && pagedIDs[e.Target] {
 			pagedEdges = append(pagedEdges, e)
 		}
 	}
