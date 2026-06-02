@@ -45,18 +45,22 @@ func (s *Scheduler) Start() {
 	s.ticker = time.NewTicker(s.cfg.CommitInterval)
 	log.Printf("[scheduler] auto-commit started, interval=%s", s.cfg.CommitInterval)
 
-	go func() {
-		s.runCycle()
-		for {
-			select {
-			case <-s.ticker.C:
-				s.runCycle()
-			case <-s.stopCh:
+	go s.runLoop()
+}
+
+func (s *Scheduler) runLoop() {
+	s.runCycle()
+	for {
+		select {
+		case <-s.ticker.C:
+			s.runCycle()
+		case <-s.stopCh:
+			if s.ticker != nil {
 				s.ticker.Stop()
-				return
 			}
+			return
 		}
-	}()
+	}
 }
 
 func (s *Scheduler) Stop() {
@@ -72,7 +76,14 @@ func (s *Scheduler) RunNow() *CycleResult {
 func (s *Scheduler) runCycle() *CycleResult {
 	result := &CycleResult{Time: time.Now()}
 
-	g, err := graph.ParseGraphifyOut(s.cfg.WorkDir)
+	s.mu.RLock()
+	workDir := s.cfg.WorkDir
+	qualityHistory := s.cfg.QualityHistory
+	commitMessage := s.cfg.CommitMessage
+	gitMgr := s.gitMgr
+	s.mu.RUnlock()
+
+	g, err := graph.ParseGraphifyOut(workDir)
 	if err != nil {
 		log.Printf("[scheduler] graph parse error: %v", err)
 		return result
@@ -81,17 +92,17 @@ func (s *Scheduler) runCycle() *CycleResult {
 	stats := g.Stats()
 	result.GraphStats = &stats
 
-	assessment, err := quality.Assess(g, s.cfg.QualityHistory)
+	assessment, err := quality.Assess(g, qualityHistory)
 	if err != nil {
 		log.Printf("[scheduler] quality assess error: %v", err)
 	} else {
 		result.Assessment = assessment
-		if err := quality.SaveAssessment(assessment, s.cfg.QualityHistory); err != nil {
+		if err := quality.SaveAssessment(assessment, qualityHistory); err != nil {
 			log.Printf("[scheduler] save assessment error: %v", err)
 		}
 	}
 
-	commitResult, err := s.gitMgr.AutoCommit(s.cfg.CommitMessage)
+	commitResult, err := gitMgr.AutoCommit(commitMessage)
 	if err != nil {
 		log.Printf("[scheduler] auto commit error: %v", err)
 	}
@@ -142,4 +153,27 @@ func (s *Scheduler) GetStatus() map[string]interface{} {
 	}
 
 	return status
+}
+
+func (s *Scheduler) UpdateConfig(cfg *config.Config) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	oldWorkDir := s.cfg.WorkDir
+	s.cfg = cfg
+
+	if cfg.WorkDir != oldWorkDir {
+		s.gitMgr = git.NewManager(cfg.WorkDir, cfg.AuthorName, cfg.AuthorEmail)
+		log.Printf("[scheduler] work_dir updated: %s -> %s", oldWorkDir, cfg.WorkDir)
+	}
+
+	if s.ticker != nil {
+		s.ticker.Stop()
+	}
+	if cfg.GitAutoCommit {
+		s.ticker = time.NewTicker(cfg.CommitInterval)
+		log.Printf("[scheduler] auto-commit reconfigured, interval=%s", cfg.CommitInterval)
+	} else {
+		s.ticker = nil
+	}
 }

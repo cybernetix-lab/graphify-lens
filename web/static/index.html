@@ -13,7 +13,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .header .status .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
 .header .status .dot.green { background: #3fb950; }
 .header .status .dot.red { background: #f85149; }
-.header .status .dot.yellow { background: #d29922; }
 .tabs { display: flex; gap: 0; background: #161b22; border-bottom: 1px solid #30363d; padding: 0 24px; }
 .tab { padding: 10px 20px; cursor: pointer; font-size: 14px; color: #8b949e; border-bottom: 2px solid transparent; transition: all 0.2s; }
 .tab:hover { color: #e1e4e8; }
@@ -22,7 +21,16 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .panel { display: none; }
 .panel.active { display: block; }
 
-#graph-container { width: 100%; height: calc(100vh - 160px); border: 1px solid #30363d; border-radius: 8px; background: #0d1117; overflow: hidden; position: relative; }
+.search-bar { display: flex; gap: 8px; margin-bottom: 12px; align-items: center; }
+.search-bar input { flex: 1; padding: 8px 12px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #e1e4e8; font-size: 14px; }
+.search-bar input:focus { outline: none; border-color: #58a6ff; }
+.search-bar select { padding: 8px 12px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #e1e4e8; font-size: 14px; }
+.search-bar .btn { padding: 8px 16px; border: 1px solid #30363d; border-radius: 6px; cursor: pointer; font-size: 14px; background: #21262d; color: #e1e4e8; }
+.search-bar .btn:hover { background: #30363d; }
+.search-info { font-size: 12px; color: #8b949e; margin-bottom: 8px; }
+.search-info .highlight { color: #58a6ff; font-weight: 600; }
+
+#graph-container { width: 100%; height: calc(100vh - 220px); border: 1px solid #30363d; border-radius: 8px; background: #0d1117; overflow: hidden; position: relative; }
 #graph-container svg { width: 100%; height: 100%; }
 .node circle { stroke-width: 2px; cursor: pointer; }
 .node text { font-size: 11px; fill: #c9d1d9; pointer-events: none; }
@@ -58,14 +66,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .btn-primary:hover { background: #2ea043; }
 .btn-secondary { background: #21262d; color: #e1e4e8; }
 .btn-secondary:hover { background: #30363d; }
-.btn-danger { background: #da3633; color: #fff; border-color: #da3633; }
 .btn-group { display: flex; gap: 8px; margin-top: 16px; }
-
-.commit-list { max-height: 300px; overflow-y: auto; }
-.commit-item { padding: 8px 0; border-bottom: 1px solid #21262d; font-size: 13px; }
-.commit-item .commit-hash { color: #58a6ff; font-family: monospace; }
-.commit-item .commit-msg { color: #e1e4e8; }
-.commit-item .commit-time { color: #8b949e; font-size: 12px; }
 
 .legend { display: flex; gap: 16px; padding: 8px 0; flex-wrap: wrap; }
 .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #8b949e; }
@@ -78,6 +79,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .loading { display: flex; align-items: center; justify-content: center; height: 200px; }
 .spinner { width: 32px; height: 32px; border: 3px solid #30363d; border-top-color: #58a6ff; border-radius: 50%; animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+.pagination { display: flex; gap: 4px; align-items: center; margin-top: 8px; }
+.pagination .btn { font-size: 12px; padding: 4px 10px; }
+.pagination .page-info { font-size: 12px; color: #8b949e; margin: 0 8px; }
 </style>
 </head>
 <body>
@@ -97,6 +102,19 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 </div>
 <div class="content">
   <div id="panel-graph" class="panel active">
+    <div class="search-bar">
+      <input type="text" id="search-input" placeholder="搜索节点（ID / 标签 / 源文件）..." onkeydown="if(event.key==='Enter')doSearch()">
+      <select id="search-type">
+        <option value="">全部类型</option>
+        <option value="code">code</option>
+        <option value="document">document</option>
+        <option value="paper">paper</option>
+        <option value="image">image</option>
+      </select>
+      <button class="btn" onclick="doSearch()">搜索</button>
+      <button class="btn" onclick="clearSearch()">清除</button>
+    </div>
+    <div class="search-info" id="search-info"></div>
     <div class="legend">
       <div class="legend-item"><span class="legend-dot" style="background:#58a6ff"></span>code</div>
       <div class="legend-item"><span class="legend-dot" style="background:#3fb950"></span>document</div>
@@ -106,6 +124,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
     </div>
     <div id="graph-container"></div>
     <div id="graph-tooltip" class="tooltip" style="display:none"></div>
+    <div class="pagination" id="pagination"></div>
   </div>
   <div id="panel-dashboard" class="panel">
     <div class="dashboard" id="dashboard-content">
@@ -131,7 +150,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
           <input type="text" id="cfg-workdir" placeholder="./data/sample">
         </div>
         <div class="form-group">
-          <label>端口</label>
+          <label>端口（需重启生效）</label>
           <input type="number" id="cfg-port" value="8080">
         </div>
         <div class="form-group">
@@ -142,9 +161,34 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
           <label>提交信息模板</label>
           <input type="text" id="cfg-message" value="auto: graphify-lens knowledge base snapshot">
         </div>
+        <div class="form-group">
+          <label>质量历史目录</label>
+          <input type="text" id="cfg-quality-history" placeholder="~/.graphify-lens/quality_history">
+        </div>
+        <div class="form-group">
+          <label>数据目录</label>
+          <input type="text" id="cfg-data-dir" placeholder="~/.graphify-lens">
+        </div>
+        <div class="form-group">
+          <label>Author 名称</label>
+          <input type="text" id="cfg-author-name" placeholder="Graphify Lens Bot">
+        </div>
+        <div class="form-group">
+          <label>Author 邮箱</label>
+          <input type="text" id="cfg-author-email" placeholder="graphify-lens-bot@teambuddy.local">
+        </div>
+        <div class="form-group">
+          <label>
+            <input type="checkbox" id="cfg-auto-commit" checked>
+            启用自动提交
+          </label>
+        </div>
+        <div id="cfg-save-msg" style="font-size:13px;margin-top:8px;display:none"></div>
         <div class="btn-group">
-          <button class="btn btn-primary" onclick="runCycle()">立即执行周期</button>
-          <button class="btn btn-secondary" onclick="refreshAll()">刷新</button>
+          <button class="btn btn-primary" onclick="saveConfig()">保存配置</button>
+          <button class="btn btn-secondary" onclick="loadConfig()">重新加载</button>
+          <button class="btn btn-secondary" onclick="runCycle()">立即执行周期</button>
+          <button class="btn btn-secondary" onclick="refreshAll()">刷新状态</button>
         </div>
       </div>
     </div>
@@ -160,6 +204,12 @@ const COLORS = {
   image: '#f85149', unknown: '#484f58'
 };
 
+let currentQuery = '';
+let currentType = '';
+let currentOffset = 0;
+let currentLimit = 500;
+let graphSimulation = null;
+
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -169,6 +219,7 @@ document.querySelectorAll('.tab').forEach(tab => {
     if (tab.dataset.tab === 'graph') renderGraph();
     if (tab.dataset.tab === 'dashboard') renderDashboard();
     if (tab.dataset.tab === 'history') renderHistory();
+    if (tab.dataset.tab === 'settings') loadConfig();
   });
 });
 
@@ -195,15 +246,58 @@ async function runCycle() {
   } catch(e) { alert('执行失败: ' + e.message); }
 }
 
-let graphSimulation = null;
+function doSearch() {
+  currentQuery = document.getElementById('search-input').value.trim();
+  currentType = document.getElementById('search-type').value;
+  currentOffset = 0;
+  renderGraph();
+}
+
+function clearSearch() {
+  document.getElementById('search-input').value = '';
+  document.getElementById('search-type').value = '';
+  currentQuery = '';
+  currentType = '';
+  currentOffset = 0;
+  renderGraph();
+}
+
+function goPage(delta) {
+  currentOffset = Math.max(0, currentOffset + delta * currentLimit);
+  renderGraph();
+}
 
 async function renderGraph() {
   const container = document.getElementById('graph-container');
+  const info = document.getElementById('search-info');
+  const pagination = document.getElementById('pagination');
+
   try {
-    const data = await fetchJSON(API + '/graph');
+    let url = API + '/graph/query?limit=' + currentLimit + '&offset=' + currentOffset;
+    if (currentQuery) url += '&q=' + encodeURIComponent(currentQuery);
+    if (currentType) url += '&type=' + encodeURIComponent(currentType);
+
+    const data = await fetchJSON(url);
+
     if (!data.nodes || data.nodes.length === 0) {
-      container.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>暂无知识图谱数据</p><p style="font-size:12px;margin-top:8px">请在 work_dir/graphify-out/ 下生成 graph.json</p></div>';
+      container.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>未找到匹配的节点</p><p style="font-size:12px;margin-top:8px">尝试其他搜索关键词</p></div>';
+      info.innerHTML = '';
+      pagination.innerHTML = '';
       return;
+    }
+
+    const totalPages = Math.ceil(data.total_nodes / currentLimit);
+    const currentPage = Math.floor(currentOffset / currentLimit) + 1;
+
+    info.innerHTML = '找到 <span class="highlight">' + data.total_nodes.toLocaleString() + '</span> 个节点，' +
+      '显示 <span class="highlight">' + (currentOffset + 1) + '-' + Math.min(currentOffset + data.nodes.length, data.total_nodes).toLocaleString() + '</span>' +
+      (data.truncated ? ' <span style="color:#d29922">（还有更多）</span>' : '');
+
+    pagination.innerHTML = '';
+    if (totalPages > 1) {
+      pagination.innerHTML += '<button class="btn" onclick="goPage(-1)" ' + (currentOffset === 0 ? 'disabled' : '') + '>上一页</button>';
+      pagination.innerHTML += '<span class="page-info">第 ' + currentPage + ' / ' + totalPages + ' 页</span>';
+      pagination.innerHTML += '<button class="btn" onclick="goPage(1)" ' + (data.truncated ? '' : 'disabled') + '>下一页</button>';
     }
 
     const width = container.clientWidth;
@@ -224,10 +318,10 @@ async function renderGraph() {
     const links = data.edges.map(e => ({ ...e, source: e.source, target: e.target }));
 
     const simulation = d3.forceSimulation(nodes)
-      .force('link', d3.forceLink(links).id(d => d.id).distance(100))
-      .force('charge', d3.forceManyBody().strength(-300))
+      .force('link', d3.forceLink(links).id(d => d.id).distance(80))
+      .force('charge', d3.forceManyBody().strength(-200))
       .force('center', d3.forceCenter(width / 2, height / 2))
-      .force('collision', d3.forceCollide().radius(30));
+      .force('collision', d3.forceCollide().radius(25));
 
     const link = g.append('g').selectAll('line')
       .data(links).join('line')
@@ -249,14 +343,14 @@ async function renderGraph() {
       );
 
     node.append('circle')
-      .attr('r', d => Math.max(8, Math.min(20, 8 + (d.source_file ? 3 : 0))))
+      .attr('r', d => Math.max(6, Math.min(16, 6 + (d.source_file ? 2 : 0))))
       .attr('fill', d => COLORS[d.file_type] || COLORS.unknown)
       .attr('stroke', d => d3.color(COLORS[d.file_type] || COLORS.unknown).darker(0.5));
 
     node.append('text')
-      .attr('dy', d => -Math.max(10, Math.min(22, 10 + (d.source_file ? 3 : 0))))
+      .attr('dy', d => -Math.max(8, Math.min(18, 8 + (d.source_file ? 2 : 0))))
       .attr('text-anchor', 'middle')
-      .text(d => d.label || d.id);
+      .text(d => (d.label || d.id).length > 25 ? (d.label || d.id).substring(0, 22) + '...' : (d.label || d.id));
 
     const tooltip = document.getElementById('graph-tooltip');
 
@@ -268,7 +362,6 @@ async function renderGraph() {
         <div class="tt-row"><span class="tt-label">来源</span><span class="tt-value">${d.source_file || '未设置'}</span></div>
         <div class="tt-row"><span class="tt-label">作者</span><span class="tt-value">${d.author || '未设置'}</span></div>
         <div class="tt-row"><span class="tt-label">贡献者</span><span class="tt-value">${d.contributor || '未设置'}</span></div>
-        <div class="tt-row"><span class="tt-label">置信度</span><span class="tt-value">${d.confidence || '-'}</span></div>
       `;
     }).on('mousemove', (event) => {
       tooltip.style.left = (event.offsetX + 15) + 'px';
@@ -288,6 +381,8 @@ async function renderGraph() {
     graphSimulation = simulation;
   } catch(e) {
     container.innerHTML = '<div class="empty-state"><div class="icon">⚠️</div><p>加载图谱失败: ' + e.message + '</p></div>';
+    info.innerHTML = '';
+    pagination.innerHTML = '';
   }
 }
 
@@ -316,11 +411,11 @@ async function renderDashboard() {
           </div>
           <div class="metric-item">
             <div class="metric-label">节点数</div>
-            <div class="metric-value">${quality.coverage.node_count}</div>
+            <div class="metric-value">${quality.coverage.node_count.toLocaleString()}</div>
           </div>
           <div class="metric-item">
             <div class="metric-label">边数</div>
-            <div class="metric-value">${quality.coverage.edge_count}</div>
+            <div class="metric-value">${quality.coverage.edge_count.toLocaleString()}</div>
           </div>
           <div class="metric-item">
             <div class="metric-label">文件类型数</div>
@@ -358,7 +453,7 @@ async function renderDashboard() {
           </div>
           <div class="metric-item">
             <div class="metric-label">有时间戳节点</div>
-            <div class="metric-value">${quality.freshness.nodes_with_timestamp}</div>
+            <div class="metric-value">${quality.freshness.nodes_with_timestamp.toLocaleString()}</div>
           </div>
           <div class="metric-item">
             <div class="metric-label">过期节点比例</div>
@@ -417,19 +512,19 @@ async function renderDashboard() {
         <div class="metric-grid">
           <div class="metric-item">
             <div class="metric-label">总节点数</div>
-            <div class="metric-value">${stats.total_nodes}</div>
+            <div class="metric-value">${stats.total_nodes.toLocaleString()}</div>
           </div>
           <div class="metric-item">
             <div class="metric-label">总边数</div>
-            <div class="metric-value">${stats.total_edges}</div>
+            <div class="metric-value">${stats.total_edges.toLocaleString()}</div>
           </div>
           <div class="metric-item">
             <div class="metric-label">EXTRACTED 边</div>
-            <div class="metric-value">${stats.confidence_breakdown?.EXTRACTED || 0}</div>
+            <div class="metric-value">${(stats.confidence_breakdown?.EXTRACTED || 0).toLocaleString()}</div>
           </div>
           <div class="metric-item">
             <div class="metric-label">INFERRED 边</div>
-            <div class="metric-value">${stats.confidence_breakdown?.INFERRED || 0}</div>
+            <div class="metric-value">${(stats.confidence_breakdown?.INFERRED || 0).toLocaleString()}</div>
           </div>
         </div>
       </div>
@@ -513,6 +608,58 @@ async function renderHistory() {
   } catch(e) {
     console.error('History render error:', e);
   }
+}
+
+async function loadConfig() {
+  try {
+    const cfg = await fetchJSON(API + '/config');
+    document.getElementById('cfg-workdir').value = cfg.work_dir || '';
+    document.getElementById('cfg-port').value = cfg.port || 8080;
+    document.getElementById('cfg-interval').value = cfg.commit_interval || '30m';
+    document.getElementById('cfg-message').value = cfg.commit_message || '';
+    document.getElementById('cfg-quality-history').value = cfg.quality_history || '';
+    document.getElementById('cfg-data-dir').value = cfg.data_dir || '';
+    document.getElementById('cfg-author-name').value = cfg.author_name || '';
+    document.getElementById('cfg-author-email').value = cfg.author_email || '';
+    document.getElementById('cfg-auto-commit').checked = cfg.git_auto_commit !== false;
+    showCfgMsg('配置已加载', '#3fb950');
+  } catch(e) {
+    showCfgMsg('加载失败: ' + e.message, '#f85149');
+  }
+}
+
+async function saveConfig() {
+  const body = {
+    work_dir: document.getElementById('cfg-workdir').value,
+    port: parseInt(document.getElementById('cfg-port').value) || 0,
+    commit_interval: document.getElementById('cfg-interval').value,
+    commit_message: document.getElementById('cfg-message').value,
+    quality_history: document.getElementById('cfg-quality-history').value,
+    data_dir: document.getElementById('cfg-data-dir').value,
+    author_name: document.getElementById('cfg-author-name').value,
+    author_email: document.getElementById('cfg-author-email').value,
+    git_auto_commit: document.getElementById('cfg-auto-commit').checked
+  };
+  try {
+    const res = await fetch(API + '/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) throw new Error(res.statusText);
+    showCfgMsg('配置已保存，工作目录变更已生效', '#3fb950');
+    refreshAll();
+  } catch(e) {
+    showCfgMsg('保存失败: ' + e.message, '#f85149');
+  }
+}
+
+function showCfgMsg(msg, color) {
+  const el = document.getElementById('cfg-save-msg');
+  el.style.display = 'block';
+  el.style.color = color;
+  el.textContent = msg;
+  setTimeout(() => { el.style.display = 'none'; }, 4000);
 }
 
 refreshAll();

@@ -37,7 +37,7 @@ func main() {
 	sched.Start()
 	defer sched.Stop()
 
-	handler := api.NewHandler(sched, cfg.WorkDir, cfg.QualityHistory)
+	handler := api.NewHandler(sched, cfg, *configPath)
 
 	mux := http.NewServeMux()
 	handler.Register(mux)
