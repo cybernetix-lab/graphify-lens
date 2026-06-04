@@ -239,10 +239,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
               <input type="text" id="cfg-interval" value="30m">
             </div>
             <div class="form-group">
-              <label>提交信息模板</label>
-              <input type="text" id="cfg-message" value="auto: graphify-lens knowledge base snapshot">
-            </div>
-            <div class="form-group">
               <label>质量历史目录</label>
               <input type="text" id="cfg-quality-history" placeholder="~/.graphify-lens/quality_history">
             </div>
@@ -813,7 +809,6 @@ async function loadConfig() {
     ]);
     document.getElementById('cfg-port').value = cfg.port || 8080;
     document.getElementById('cfg-interval').value = cfg.commit_interval || '30m';
-    document.getElementById('cfg-message').value = cfg.commit_message || '';
     document.getElementById('cfg-quality-history').value = cfg.quality_history || '';
     document.getElementById('cfg-data-dir').value = cfg.data_dir || '';
     document.getElementById('cfg-author-name').value = cfg.author_name || '';
@@ -904,7 +899,6 @@ async function saveConfig() {
   const body = {
     port: parseInt(document.getElementById('cfg-port').value) || 0,
     commit_interval: document.getElementById('cfg-interval').value,
-    commit_message: document.getElementById('cfg-message').value,
     quality_history: document.getElementById('cfg-quality-history').value,
     data_dir: document.getElementById('cfg-data-dir').value,
     author_name: document.getElementById('cfg-author-name').value,

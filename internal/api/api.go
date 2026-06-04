@@ -245,7 +245,6 @@ func (h *Handler) handleConfig(w http.ResponseWriter, r *http.Request) {
 			"port":            h.cfg.Port,
 			"git_auto_commit": h.cfg.GitAutoCommit,
 			"commit_interval": h.cfg.CommitInterval.String(),
-			"commit_message":  h.cfg.CommitMessage,
 			"quality_history": h.cfg.QualityHistory,
 			"data_dir":        h.cfg.DataDir,
 			"author_name":     h.cfg.AuthorName,
@@ -259,7 +258,6 @@ func (h *Handler) handleConfig(w http.ResponseWriter, r *http.Request) {
 			Port           int      `json:"port"`
 			GitAutoCommit  *bool    `json:"git_auto_commit"`
 			CommitInterval string   `json:"commit_interval"`
-			CommitMessage  string   `json:"commit_message"`
 			QualityHistory string   `json:"quality_history"`
 			DataDir        string   `json:"data_dir"`
 			AuthorName     string   `json:"author_name"`
@@ -287,9 +285,6 @@ func (h *Handler) handleConfig(w http.ResponseWriter, r *http.Request) {
 			if d, err := time.ParseDuration(req.CommitInterval); err == nil {
 				h.cfg.CommitInterval = d
 			}
-		}
-		if req.CommitMessage != "" {
-			h.cfg.CommitMessage = req.CommitMessage
 		}
 		if req.QualityHistory != "" {
 			h.cfg.QualityHistory = config.ExpandPath(req.QualityHistory)

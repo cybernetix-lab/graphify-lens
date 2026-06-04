@@ -1,10 +1,8 @@
 {
   "work_dirs": ["./data/sample"],
-  "current_work_dir": "./data/sample",
   "port": 8080,
   "git_auto_commit": true,
   "commit_interval": "30m",
-  "commit_message": "auto: graphify-lens knowledge base snapshot",
   "quality_history": "~/.graphify-lens/quality_history",
   "data_dir": "~/.graphify-lens",
   "author_name": "Graphify Lens Bot",

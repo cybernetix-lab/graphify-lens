@@ -13,7 +13,6 @@ type Config struct {
 	Port           int           `json:"port"`
 	GitAutoCommit  bool          `json:"git_auto_commit"`
 	CommitInterval time.Duration `json:"commit_interval"`
-	CommitMessage  string        `json:"commit_message"`
 	QualityHistory string        `json:"quality_history"`
 	DataDir        string        `json:"data_dir"`
 	AuthorName     string        `json:"author_name"`
@@ -32,7 +31,6 @@ func DefaultConfig() *Config {
 		Port:           8080,
 		GitAutoCommit:  true,
 		CommitInterval: 30 * time.Minute,
-		CommitMessage:  "auto: graphify-lens knowledge base snapshot",
 		QualityHistory: filepath.Join(home, ".graphify-lens", "quality_history"),
 		DataDir:        filepath.Join(home, ".graphify-lens"),
 		AuthorName:     "Graphify Lens Bot",
@@ -88,7 +86,6 @@ func loadFile(path string) (*Config, error) {
 		Port           int      `json:"port"`
 		GitAutoCommit  *bool    `json:"git_auto_commit"`
 		CommitInterval string   `json:"commit_interval"`
-		CommitMessage  string   `json:"commit_message"`
 		QualityHistory string   `json:"quality_history"`
 		DataDir        string   `json:"data_dir"`
 		AuthorName     string   `json:"author_name"`
@@ -123,9 +120,6 @@ func loadFile(path string) (*Config, error) {
 			cfg.CommitInterval = d
 		}
 	}
-	if raw.CommitMessage != "" {
-		cfg.CommitMessage = raw.CommitMessage
-	}
 	if raw.QualityHistory != "" {
 		cfg.QualityHistory = ExpandPath(raw.QualityHistory)
 	}
@@ -147,7 +141,6 @@ type configForJSON struct {
 	Port           int      `json:"port"`
 	GitAutoCommit  bool     `json:"git_auto_commit"`
 	CommitInterval string   `json:"commit_interval"`
-	CommitMessage  string   `json:"commit_message"`
 	QualityHistory string   `json:"quality_history"`
 	DataDir        string   `json:"data_dir"`
 	AuthorName     string   `json:"author_name"`
@@ -165,7 +158,6 @@ func (c *Config) Save(path string) error {
 		Port:           c.Port,
 		GitAutoCommit:  c.GitAutoCommit,
 		CommitInterval: c.CommitInterval.String(),
-		CommitMessage:  c.CommitMessage,
 		QualityHistory: c.QualityHistory,
 		DataDir:        c.DataDir,
 		AuthorName:     c.AuthorName,

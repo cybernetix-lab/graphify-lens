@@ -1,7 +1,10 @@
 package scheduler
 
 import (
+	"fmt"
 	"log"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -86,13 +89,12 @@ func (s *Scheduler) runAllCycles() map[string]*CycleResult {
 	workDirs := make([]string, len(s.cfg.WorkDirs))
 	copy(workDirs, s.cfg.WorkDirs)
 	qualityHistory := s.cfg.QualityHistory
-	commitMessage := s.cfg.CommitMessage
 	s.mu.RUnlock()
 
 	results := make(map[string]*CycleResult)
 
 	for _, wd := range workDirs {
-		result := s.runCycle(wd, qualityHistory, commitMessage)
+		result := s.runCycle(wd, qualityHistory)
 		results[wd] = result
 
 		s.mu.Lock()
@@ -103,7 +105,7 @@ func (s *Scheduler) runAllCycles() map[string]*CycleResult {
 	return results
 }
 
-func (s *Scheduler) runCycle(workDir, qualityHistory, commitMessage string) *CycleResult {
+func (s *Scheduler) runCycle(workDir, qualityHistory string) *CycleResult {
 	result := &CycleResult{
 		WorkDir: workDir,
 		Time:    time.Now(),
@@ -144,10 +146,12 @@ func (s *Scheduler) runCycle(workDir, qualityHistory, commitMessage string) *Cyc
 
 	s.mu.RLock()
 	gitMgr := s.gitMgrs[workDir]
+	prevResult := s.results[workDir]
 	s.mu.RUnlock()
 
 	if gitMgr != nil {
-		commitResult, err := gitMgr.AutoCommit(commitMessage)
+		msg := buildCommitMessage(g, assessment, prevResult)
+		commitResult, err := gitMgr.AutoCommit(msg)
 		if err != nil {
 			log.Printf("[scheduler] auto commit error [%s]: %v", workDir, err)
 		}
@@ -171,6 +175,81 @@ func (s *Scheduler) runCycle(workDir, qualityHistory, commitMessage string) *Cyc
 	)
 
 	return result
+}
+
+func buildCommitMessage(g *graph.Graph, a *quality.Assessment, prev *CycleResult) string {
+	var parts []string
+
+	// node/edge counts
+	parts = append(parts, fmt.Sprintf("nodes=%d edges=%d", len(g.Nodes), len(g.Edges)))
+
+	// delta from previous cycle
+	if prev != nil && prev.GraphStats != nil {
+		nodeDelta := len(g.Nodes) - prev.GraphStats.TotalNodes
+		edgeDelta := len(g.Edges) - prev.GraphStats.TotalEdges
+		if nodeDelta != 0 || edgeDelta != 0 {
+			parts = append(parts, fmt.Sprintf("Δ nodes%+d edges%+d", nodeDelta, edgeDelta))
+		}
+	}
+
+	// file type summary
+	typeCounts := make(map[string]int)
+	for _, n := range g.Nodes {
+		ft := n.FileType
+		if ft == "" {
+			ft = "other"
+		}
+		typeCounts[ft]++
+	}
+	if len(typeCounts) > 0 {
+		type typeKV struct {
+			k string
+			v int
+		}
+		var sorted []typeKV
+		for k, v := range typeCounts {
+			sorted = append(sorted, typeKV{k, v})
+		}
+		sort.Slice(sorted, func(i, j int) bool { return sorted[i].v > sorted[j].v })
+		var typeParts []string
+		for _, kv := range sorted {
+			typeParts = append(typeParts, fmt.Sprintf("%s:%d", kv.k, kv.v))
+		}
+		parts = append(parts, strings.Join(typeParts, " "))
+	}
+
+	// quality score
+	if a != nil {
+		parts = append(parts, fmt.Sprintf("score=%.0f", a.TotalScore))
+	}
+
+	// top relations
+	relCounts := make(map[string]int)
+	for _, e := range g.Edges {
+		relCounts[e.Relation]++
+	}
+	if len(relCounts) > 0 {
+		type relKV struct {
+			k string
+			v int
+		}
+		var sorted []relKV
+		for k, v := range relCounts {
+			sorted = append(sorted, relKV{k, v})
+		}
+		sort.Slice(sorted, func(i, j int) bool { return sorted[i].v > sorted[j].v })
+		topN := 3
+		if len(sorted) < topN {
+			topN = len(sorted)
+		}
+		var relParts []string
+		for i := 0; i < topN; i++ {
+			relParts = append(relParts, fmt.Sprintf("%s:%d", sorted[i].k, sorted[i].v))
+		}
+		parts = append(parts, "top: "+strings.Join(relParts, " "))
+	}
+
+	return "graphify: " + strings.Join(parts, " | ")
 }
 
 func (s *Scheduler) LastResult(workDir string) *CycleResult {
