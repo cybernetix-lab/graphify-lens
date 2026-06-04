@@ -249,7 +249,7 @@ func buildCommitMessage(g *graph.Graph, a *quality.Assessment, prev *CycleResult
 		parts = append(parts, "top: "+strings.Join(relParts, " "))
 	}
 
-	return "graphify: " + strings.Join(parts, " | ")
+	return "graphify: " + strings.Join(parts, " · ")
 }
 
 func (s *Scheduler) LastResult(workDir string) *CycleResult {

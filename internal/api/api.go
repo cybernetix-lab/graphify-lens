@@ -190,10 +190,9 @@ func (h *Handler) handleCommits(w http.ResponseWriter, r *http.Request) {
 }
 
 type CommitLogEntry struct {
-	WorkDir    string           `json:"work_dir"`
-	Commits    []git.CommitInfo `json:"commits"`
-	TotalCount int              `json:"total_count"`
-	Error      string           `json:"error,omitempty"`
+	WorkDir string           `json:"work_dir"`
+	Commits []git.CommitInfo `json:"commits"`
+	Error   string           `json:"error,omitempty"`
 }
 
 func (h *Handler) handleCommitLog(w http.ResponseWriter, r *http.Request) {
@@ -233,7 +232,6 @@ func fetchCommitLog(workDir string, limit int) CommitLogEntry {
 		return entry
 	}
 	entry.Commits = commits
-	entry.TotalCount = len(commits)
 	return entry
 }
 

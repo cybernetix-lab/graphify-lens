@@ -75,7 +75,8 @@ func (m *Manager) Commit(message string) error {
 
 func (m *Manager) Log(n int) ([]CommitInfo, error) {
 	cmd := exec.Command("git", "-C", m.WorkDir, "log",
-		"--format=%H|%s|%ai|%an",
+		"--format=%H%x00%s%x00%ai%x00%an",
+		"--shortstat",
 		"-n", fmt.Sprintf("%d", n),
 	)
 	out, err := cmd.Output()
@@ -84,30 +85,82 @@ func (m *Manager) Log(n int) ([]CommitInfo, error) {
 	}
 
 	var commits []CommitInfo
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	for i := 0; i < len(lines); i++ {
+		line := lines[i]
 		if line == "" {
 			continue
 		}
-		parts := strings.SplitN(line, "|", 4)
+		parts := strings.SplitN(line, "\x00", 4)
 		if len(parts) < 4 {
 			continue
 		}
 		t, _ := time.Parse("2006-01-02 15:04:05 -0700", parts[2])
-		commits = append(commits, CommitInfo{
+		c := CommitInfo{
 			Hash:    parts[0],
 			Message: parts[1],
 			Time:    t,
 			Author:  parts[3],
-		})
+		}
+
+		// next non-empty line is the --shortstat line
+		for i+1 < len(lines) {
+			i++
+			statLine := strings.TrimSpace(lines[i])
+			if statLine == "" {
+				continue
+			}
+			c.DiffStat = parseShortStat(statLine)
+			break
+		}
+
+		commits = append(commits, c)
 	}
 	return commits, nil
 }
 
+func parseShortStat(line string) DiffStat {
+	// "3 files changed, 15 insertions(+), 2 deletions(-)"
+	// or "1 file changed, 5 insertions(+)"
+	var ds DiffStat
+	parts := strings.Split(line, ",")
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if strings.Contains(p, "file") {
+			ds.FilesChanged = parseFirstNum(p)
+		} else if strings.Contains(p, "insertion") {
+			ds.Insertions = parseFirstNum(p)
+		} else if strings.Contains(p, "deletion") {
+			ds.Deletions = parseFirstNum(p)
+		}
+	}
+	return ds
+}
+
+func parseFirstNum(s string) int {
+	var n int
+	for _, ch := range s {
+		if ch >= '0' && ch <= '9' {
+			n = n*10 + int(ch-'0')
+		} else if n > 0 {
+			break
+		}
+	}
+	return n
+}
+
 type CommitInfo struct {
-	Hash    string    `json:"hash"`
-	Message string    `json:"message"`
-	Time    time.Time `json:"time"`
-	Author  string    `json:"author"`
+	Hash     string    `json:"hash"`
+	Message  string    `json:"message"`
+	Time     time.Time `json:"time"`
+	Author   string    `json:"author"`
+	DiffStat DiffStat   `json:"diff_stat"`
+}
+
+type DiffStat struct {
+	FilesChanged int `json:"files_changed"`
+	Insertions   int `json:"insertions"`
+	Deletions    int `json:"deletions"`
 }
 
 func (m *Manager) AutoCommit(message string) (*CommitResult, error) {
