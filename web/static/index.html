@@ -109,6 +109,22 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 
 .msg { font-size: 13px; margin-top: 8px; display: none; }
 
+.commit-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.commit-table th { text-align: left; padding: 10px 12px; color: #8b949e; border-bottom: 1px solid #30363d; font-weight: 600; font-size: 12px; text-transform: uppercase; }
+.commit-table td { padding: 10px 12px; border-bottom: 1px solid #21262d; }
+.commit-table tr:hover td { background: #1c2128; }
+.commit-table .hash { font-family: monospace; color: #58a6ff; font-size: 12px; }
+.commit-table .message { color: #e1e4e8; max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.commit-table .time { color: #8b949e; font-size: 12px; white-space: nowrap; }
+.commit-table .author { color: #8b949e; font-size: 12px; }
+.commit-section { margin-bottom: 24px; }
+.commit-section h4 { font-size: 14px; color: #58a6ff; margin-bottom: 8px; font-family: monospace; }
+
+.info-icon { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 50%; background: #30363d; color: #8b949e; font-size: 10px; cursor: help; margin-left: 6px; vertical-align: middle; font-weight: 700; position: relative; }
+.info-icon:hover { background: #58a6ff; color: #fff; }
+.info-tip { display: none; position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); background: #21262d; border: 1px solid #30363d; border-radius: 6px; padding: 8px 12px; font-size: 11px; color: #e1e4e8; white-space: normal; width: 260px; z-index: 200; box-shadow: 0 4px 12px rgba(0,0,0,0.3); font-weight: 400; line-height: 1.5; }
+.info-icon:hover .info-tip { display: block; }
+
 .sub-tabs { display: flex; flex-direction: column; gap: 2px; }
 .sub-tab { padding: 10px 14px; cursor: pointer; font-size: 13px; color: #8b949e; border-left: 2px solid transparent; border-radius: 0 6px 6px 0; transition: all 0.2s; }
 .sub-tab:hover { color: #e1e4e8; background: #21262d; }
@@ -136,6 +152,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
   <div class="tab active" data-tab="graph">知识图谱</div>
   <div class="tab" data-tab="dashboard">质量仪表盘</div>
   <div class="tab" data-tab="history">历史趋势</div>
+  <div class="tab" data-tab="commits">提交日志</div>
   <div class="tab" data-tab="settings">设置</div>
 </div>
 <div class="content">
@@ -177,6 +194,14 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
     <div class="card" style="margin-top:16px">
       <h3>各维度趋势</h3>
       <div class="chart-container large"><canvas id="chart-dimensions"></canvas></div>
+    </div>
+  </div>
+  <div id="panel-commits" class="panel">
+    <div class="card">
+      <h3>📋 提交日志</h3>
+      <div id="commit-log-content">
+        <div class="loading"><div class="spinner"></div></div>
+      </div>
     </div>
   </div>
   <div id="panel-settings" class="panel">
@@ -287,6 +312,7 @@ document.querySelectorAll('.tab').forEach(tab => {
     if (tab.dataset.tab === 'graph') renderGraph();
     if (tab.dataset.tab === 'dashboard') renderDashboard();
     if (tab.dataset.tab === 'history') renderHistory();
+    if (tab.dataset.tab === 'commits') renderCommits();
     if (tab.dataset.tab === 'settings') loadConfig();
   });
 });
@@ -532,7 +558,7 @@ async function renderDashboard() {
         <div class="subtitle">Knowledge Quality Score · ${new Date(quality.timestamp).toLocaleString('zh-CN')}</div>
       </div>
       <div class="card">
-        <h3>📊 覆盖度 (30%)</h3>
+        <h3>📊 覆盖度 (30%)<span class="info-icon">?<span class="info-tip">衡量知识库的规模和结构丰富度。节点越多、文件类型越多样、节点间连接越密集，得分越高。满分意味着节点≥50个、覆盖≥5种文件类型、边密度饱和。</span></span></h3>
         <div class="metric-grid">
           <div class="metric-item">
             <div class="metric-label">覆盖度得分</div>
@@ -553,7 +579,7 @@ async function renderDashboard() {
         </div>
       </div>
       <div class="card">
-        <h3>🎯 准确度 (25%)</h3>
+        <h3>🎯 准确度 (25%)<span class="info-icon">?<span class="info-tip">衡量知识抽取的可靠程度。EXTRACTED 边是直接从源文件提取的，可信度最高；INFERRED 是推理得出的；AMBIGUOUS 是模糊不确定的。EXTRACTED 比例越高、平均置信度越高，得分越高。</span></span></h3>
         <div class="metric-grid">
           <div class="metric-item">
             <div class="metric-label">准确度得分</div>
@@ -574,7 +600,7 @@ async function renderDashboard() {
         </div>
       </div>
       <div class="card">
-        <h3>🕐 新鲜度 (20%)</h3>
+        <h3>🕐 新鲜度 (20%)<span class="info-icon">?<span class="info-tip">衡量知识是否过时。节点捕获时间越近，得分越高；超过 180 天未更新的节点视为过期。过期节点越多、平均捕获天数越大，得分越低。</span></span></h3>
         <div class="metric-grid">
           <div class="metric-item">
             <div class="metric-label">新鲜度得分</div>
@@ -595,7 +621,7 @@ async function renderDashboard() {
         </div>
       </div>
       <div class="card">
-        <h3>🏛️ 治理度 (15%)</h3>
+        <h3>🏛️ 治理度 (15%)<span class="info-icon">?<span class="info-tip">衡量知识元数据的完整性和可追溯性。每个节点是否标注了作者、是否关联了源文件、是否有贡献者信息。三项覆盖率越高，说明知识来源越清晰、越容易追溯。</span></span></h3>
         <div class="metric-grid">
           <div class="metric-item">
             <div class="metric-label">治理度得分</div>
@@ -616,7 +642,7 @@ async function renderDashboard() {
         </div>
       </div>
       <div class="card">
-        <h3>📈 复用与成长 (10%)</h3>
+        <h3>📈 复用与成长 (10%)<span class="info-icon">?<span class="info-tip">衡量知识库的增长势头。对比上次评估，节点和边的增长率越高，说明知识库在持续积累和演进。首次评估无历史数据，得分为 0。</span></span></h3>
         <div class="metric-grid">
           <div class="metric-item">
             <div class="metric-label">复用成长得分</div>
@@ -736,6 +762,46 @@ async function renderHistory() {
     });
   } catch(e) {
     console.error('History render error:', e);
+  }
+}
+
+async function renderCommits() {
+  const container = document.getElementById('commit-log-content');
+  const wd = selectedWorkDir();
+  try {
+    let url = API + '/commits/log?limit=50';
+    if (wd) url += '&work_dir=' + encodeURIComponent(wd);
+    const data = await fetchJSON(url);
+
+    if (!data.entries || data.entries.length === 0) {
+      container.innerHTML = '<div class="empty-state"><div class="icon">📋</div><p>暂无提交记录</p></div>';
+      return;
+    }
+
+    let html = '';
+    data.entries.forEach(entry => {
+      html += '<div class="commit-section"><h4>' + escapeHtml(entry.work_dir) + '</h4>';
+      if (entry.error) {
+        html += '<p style="color:#f85149;font-size:13px">' + escapeHtml(entry.error) + '</p>';
+      } else if (entry.commits.length === 0) {
+        html += '<p style="color:#8b949e;font-size:13px">暂无提交</p>';
+      } else {
+        html += '<table class="commit-table"><thead><tr><th>Hash</th><th>Message</th><th>Time</th><th>Author</th></tr></thead><tbody>';
+        entry.commits.forEach(c => {
+          html += '<tr>' +
+            '<td class="hash">' + escapeHtml(c.hash.substring(0, 8)) + '</td>' +
+            '<td class="message" title="' + escapeAttr(c.message) + '">' + escapeHtml(c.message) + '</td>' +
+            '<td class="time">' + new Date(c.time).toLocaleString('zh-CN') + '</td>' +
+            '<td class="author">' + escapeHtml(c.author) + '</td>' +
+            '</tr>';
+        });
+        html += '</tbody></table>';
+      }
+      html += '</div>';
+    });
+    container.innerHTML = html;
+  } catch(e) {
+    container.innerHTML = '<div class="empty-state"><div class="icon">⚠️</div><p>加载提交日志失败: ' + e.message + '</p></div>';
   }
 }
 

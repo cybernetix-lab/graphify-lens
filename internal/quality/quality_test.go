@@ -46,8 +46,8 @@ func TestAssess_TotalScoreRange(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if a.TotalScore < 0 || a.TotalScore > 1 {
-		t.Errorf("total score out of range [0,1]: %f", a.TotalScore)
+	if a.TotalScore < 0 || a.TotalScore > 100 {
+		t.Errorf("total score out of range [0,100]: %f", a.TotalScore)
 	}
 }
 

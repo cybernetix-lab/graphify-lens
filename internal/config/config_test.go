@@ -21,6 +21,9 @@ func TestDefaultConfig(t *testing.T) {
 }
 
 func TestLoad_NoFile(t *testing.T) {
+	canonical := CanonicalPath()
+	os.Remove(canonical)
+
 	cfg, err := Load("")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -29,7 +32,6 @@ func TestLoad_NoFile(t *testing.T) {
 		t.Errorf("expected default port, got %d", cfg.Port)
 	}
 
-	canonical := CanonicalPath()
 	if _, err := os.Stat(canonical); err != nil {
 		t.Errorf("expected canonical config to be created at %s: %v", canonical, err)
 	}

@@ -1,7 +1,7 @@
 {
   "version": "1.0",
-  "timestamp": "2026-06-02T15:09:14.402467+08:00",
-  "checksum": "1b57bcbc73b50761896d97abea63f2af54ed61baba267eb85312ed9d4b97f91f",
+  "timestamp": "2026-06-04T10:51:38.014028+08:00",
+  "checksum": "9c780767c187d807951e8f2070f3e0d6d30c484f974f22b6fcde6b0db6aba432",
   "summary": {
     "total_nodes": 8,
     "total_edges": 10,
@@ -14,7 +14,7 @@
   },
   "topology": {
     "avg_degree": 2.5,
-    "max_degree": 4,
+    "max_degree": 5,
     "connected_components": 1,
     "isolated_nodes": 0
   },
@@ -23,7 +23,7 @@
       "id": "code_transformer_layer",
       "label": "TransformerLayer",
       "file_type": "code",
-      "degree": 4
+      "degree": 5
     },
     {
       "id": "concept_transformer_architecture",
@@ -32,10 +32,16 @@
       "degree": 3
     },
     {
-      "id": "doc_training_pipeline",
-      "label": "Training Pipeline Overview",
-      "file_type": "document",
-      "degree": 3
+      "id": "code_multihead_attention",
+      "label": "MultiHeadAttention",
+      "file_type": "code",
+      "degree": 2
+    },
+    {
+      "id": "code_data_loader",
+      "label": "DataLoader",
+      "file_type": "code",
+      "degree": 2
     },
     {
       "id": "concept_attention_mechanism",
@@ -44,21 +50,15 @@
       "degree": 2
     },
     {
-      "id": "code_multihead_attention",
-      "label": "MultiHeadAttention",
-      "file_type": "code",
+      "id": "doc_training_pipeline",
+      "label": "Training Pipeline Overview",
+      "file_type": "document",
       "degree": 2
     },
     {
       "id": "doc_data_preprocessing",
       "label": "Data Preprocessing",
       "file_type": "document",
-      "degree": 2
-    },
-    {
-      "id": "code_data_loader",
-      "label": "DataLoader",
-      "file_type": "code",
       "degree": 2
     },
     {
@@ -77,6 +77,6 @@
       "is_foundation_of": 1,
       "references": 2
     },
-    "avg_confidence": 0.82
+    "avg_confidence": 0.8100000000000002
   }
 }

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/cybernetix-lab/graphify-lens/internal/config"
+	"github.com/cybernetix-lab/graphify-lens/internal/git"
 	"github.com/cybernetix-lab/graphify-lens/internal/graph"
 	"github.com/cybernetix-lab/graphify-lens/internal/quality"
 	"github.com/cybernetix-lab/graphify-lens/internal/scheduler"
@@ -38,6 +39,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/api/status", h.handleStatus)
 	mux.HandleFunc("/api/cycle/run", h.handleRunCycle)
 	mux.HandleFunc("/api/commits", h.handleCommits)
+	mux.HandleFunc("/api/commits/log", h.handleCommitLog)
 	mux.HandleFunc("/api/config", h.handleConfig)
 	mux.HandleFunc("/api/config/workdirs", h.handleWorkDirs)
 }
@@ -185,6 +187,54 @@ func (h *Handler) handleCommits(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"results": h.scheduler.AllResults(),
 	})
+}
+
+type CommitLogEntry struct {
+	WorkDir    string           `json:"work_dir"`
+	Commits    []git.CommitInfo `json:"commits"`
+	TotalCount int              `json:"total_count"`
+	Error      string           `json:"error,omitempty"`
+}
+
+func (h *Handler) handleCommitLog(w http.ResponseWriter, r *http.Request) {
+	limit := 50
+	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 {
+		limit = l
+	}
+
+	workDir := r.URL.Query().Get("work_dir")
+
+	var entries []CommitLogEntry
+
+	if workDir != "" {
+		entry := fetchCommitLog(config.ExpandPath(workDir), limit)
+		entries = append(entries, entry)
+	} else {
+		for _, wd := range h.cfg.WorkDirs {
+			entries = append(entries, fetchCommitLog(wd, limit))
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"entries": entries,
+	})
+}
+
+func fetchCommitLog(workDir string, limit int) CommitLogEntry {
+	entry := CommitLogEntry{WorkDir: workDir}
+	mgr := git.NewManager(workDir, "", "")
+	if !mgr.IsRepo() {
+		entry.Error = "not a git repository"
+		return entry
+	}
+	commits, err := mgr.Log(limit)
+	if err != nil {
+		entry.Error = err.Error()
+		return entry
+	}
+	entry.Commits = commits
+	entry.TotalCount = len(commits)
+	return entry
 }
 
 func (h *Handler) handleConfig(w http.ResponseWriter, r *http.Request) {

@@ -81,12 +81,12 @@ func Assess(g *graph.Graph, historyDir string) (*Assessment, error) {
 	a.ReuseGrowth = assessReuseGrowth(g, historyDir)
 
 	a.TotalScore = math.Round(
-		a.Coverage.Score*weightCoverage*100+
-			a.Accuracy.Score*weightAccuracy*100+
-			a.Freshness.Score*weightFreshness*100+
-			a.Governance.Score*weightGovernance*100+
-			a.ReuseGrowth.Score*weightReuseGrowth*100,
-	) / 100
+		(a.Coverage.Score*weightCoverage+
+			a.Accuracy.Score*weightAccuracy+
+			a.Freshness.Score*weightFreshness+
+			a.Governance.Score*weightGovernance+
+			a.ReuseGrowth.Score*weightReuseGrowth)*100,
+	)
 
 	return a, nil
 }
